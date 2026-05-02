@@ -70,20 +70,19 @@ jobs:
             mv src-tauri/tauri.conf.json.new src-tauri/tauri.conf.json
             echo "createUpdaterArtifacts removed."
           else
-            # Tauri's bundler base64-decodes the env value directly, so the
-            # comment header from `tauri signer generate` (and our keygen
-            # script) must be stripped. Accept either format: extract just
-            # the longest base64-looking line.
-            printf '%s' "${KEY_VALUE}" \
+            # Tauri's bundler base64-decodes the env value as-is. The key
+            # content must be EXACTLY the base64 line — no comment header,
+            # no trailing newline, no CRLF.
+            KEY=$(printf '%s' "${KEY_VALUE}" \
               | tr -d '\r' \
               | grep -E '^[A-Za-z0-9+/=]+$' \
               | awk '{ print length, $0 }' \
               | sort -rn \
               | head -n1 \
-              | cut -d' ' -f2- \
-              > "${RUNNER_TEMP}/signing.key"
+              | cut -d' ' -f2-)
+            printf '%s' "$KEY" > "${RUNNER_TEMP}/signing.key"
             echo "key_path=${RUNNER_TEMP}/signing.key" >> "$GITHUB_OUTPUT"
-            echo "extracted key length: $(wc -c < ${RUNNER_TEMP}/signing.key)"
+            echo "extracted key length: $(wc -c < ${RUNNER_TEMP}/signing.key) (no trailing newline)"
           fi
 
       - name: Build Tauri app
