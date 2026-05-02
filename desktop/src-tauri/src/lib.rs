@@ -75,6 +75,30 @@ fn is_running(state: tauri::State<'_, State>) -> bool {
     *state.started.lock().unwrap()
 }
 
+/// Server-side token lookup — bypasses the WebView's CORS by doing the
+/// HTTP call from Rust. Returns the parsed JSON the platform sends
+/// back, or an error string for the UI to toast.
+#[tauri::command]
+async fn lookup_token(api_url: Option<String>, token: String) -> Result<serde_json::Value, String> {
+    let base = api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
+    let url = format!("{}/api/v1/nodes/by-token", base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {}", status.as_u16()));
+    }
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 fn config_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = app
         .path()
@@ -132,6 +156,7 @@ pub fn run() {
             start_runner,
             runner_status,
             is_running,
+            lookup_token,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
