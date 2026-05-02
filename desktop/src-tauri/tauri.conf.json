@@ -64,7 +64,7 @@
       "endpoints": [
         "https://github.com/SmooL-G/pulsar-node/releases/latest/download/latest.json"
       ],
-      "pubkey": "PASTE_PUBLIC_KEY_HERE",
+      "pubkey": "RWSf6yJtxMFLYlkoZxK70U3YLuZrOWdanvQ8zsCHX9Mh5B54j1rg2SbH",
       "windows": {
         "installMode": "passive"
       }
