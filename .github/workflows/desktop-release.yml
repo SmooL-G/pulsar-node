@@ -70,19 +70,26 @@ jobs:
             mv src-tauri/tauri.conf.json.new src-tauri/tauri.conf.json
             echo "createUpdaterArtifacts removed."
           else
-            # Tauri's bundler base64-decodes the env value as-is. The key
-            # content must be EXACTLY the base64 line — no comment header,
-            # no trailing newline, no CRLF.
-            KEY=$(printf '%s' "${KEY_VALUE}" \
+            # Tauri's bundler expects: base64( "untrusted comment: ...\n<base64 key>\n" ).
+            # That is — the WHOLE minisign file (with header), then base64-encoded.
+            # Pull out the actual key body (longest pure-base64 line),
+            # rebuild the file format, then base64 it again for Tauri.
+            KEY_BODY=$(printf '%s' "${KEY_VALUE}" \
               | tr -d '\r' \
               | grep -E '^[A-Za-z0-9+/=]+$' \
               | awk '{ print length, $0 }' \
               | sort -rn \
               | head -n1 \
               | cut -d' ' -f2-)
-            printf '%s' "$KEY" > "${RUNNER_TEMP}/signing.key"
+            if [ -z "$KEY_BODY" ]; then
+              echo "Could not extract base64 key body from TAURI_SIGNING_PRIVATE_KEY"
+              exit 1
+            fi
+            FILE=$(printf 'untrusted comment: minisign encrypted secret key\n%s\n' "$KEY_BODY")
+            ENCODED=$(printf '%s' "$FILE" | base64 -w0)
+            printf '%s' "$ENCODED" > "${RUNNER_TEMP}/signing.key"
             echo "key_path=${RUNNER_TEMP}/signing.key" >> "$GITHUB_OUTPUT"
-            echo "extracted key length: $(wc -c < ${RUNNER_TEMP}/signing.key) (no trailing newline)"
+            echo "encoded key length: $(wc -c < ${RUNNER_TEMP}/signing.key)"
           fi
 
       - name: Build Tauri app
