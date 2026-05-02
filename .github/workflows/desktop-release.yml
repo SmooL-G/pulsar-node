@@ -56,11 +56,33 @@ jobs:
           npm install --no-audit --no-fund
           npx @tauri-apps/cli icon ./src-tauri/icons/source.png
 
+      - name: Prepare signing key
+        id: prep_signing
+        working-directory: desktop
+        shell: bash
+        env:
+          KEY_VALUE: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "${KEY_VALUE}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is not set — building without updater signatures."
+            # Drop createUpdaterArtifacts so the unsigned build doesn't fail.
+            jq 'del(.bundle.createUpdaterArtifacts)' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.new
+            mv src-tauri/tauri.conf.json.new src-tauri/tauri.conf.json
+            echo "createUpdaterArtifacts removed."
+          else
+            # Strip any CRLF the GH UI may have added when the user pasted the key.
+            printf '%s' "${KEY_VALUE}" | tr -d '\r' > "${RUNNER_TEMP}/signing.key"
+            echo "key_path=${RUNNER_TEMP}/signing.key" >> "$GITHUB_OUTPUT"
+            echo "first line of stored key:"
+            head -n1 "${RUNNER_TEMP}/signing.key"
+            echo "key file size: $(wc -c < ${RUNNER_TEMP}/signing.key)"
+          fi
+
       - name: Build Tauri app
         working-directory: desktop
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.prep_signing.outputs.key_path }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: npx @tauri-apps/cli build
 
