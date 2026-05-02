@@ -145,7 +145,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.13</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.14</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -234,13 +234,14 @@
   <script type="module">
     const { invoke } = window.__TAURI__.core;
     const { enable, disable, isEnabled } = window.__TAURI__.autostart;
-    const { check: checkUpdate } = window.__TAURI__.updater;
-    const { relaunch } = window.__TAURI__.process;
+    // Plugin globals (updater, process) aren't always exposed on
+    // window.__TAURI__ in Tauri 2. If the destructuring throws, every
+    // handler below silently dies — so call commands through invoke().
 
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.13',
+        subtitle: 'Relay Node v0.1.14',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -289,7 +290,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.13',
+        subtitle: 'Relay Node v0.1.14',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -386,41 +387,28 @@
     const TOKEN_RE = /^[a-f0-9]{32,128}$/i;
 
     // ─── updates ───────────────────────────────────────────────
-    async function checkForUpdates(opts) {
-      const silent = opts && opts.silent;
+    async function checkForUpdates() {
       const status = $('update-status');
       const btn = $('update-btn');
       btn.disabled = true;
-      status.textContent = silent ? '' : tx('checking_updates');
+      status.textContent = tx('checking_updates');
       try {
-        const update = await checkUpdate();
-        if (!update || !update.available) {
+        const meta = await invoke('plugin:updater|check');
+        if (!meta || !meta.available) {
           status.textContent = tx('no_updates');
           btn.disabled = false;
           return;
         }
-        status.textContent = tx('update_available') + update.version + ' — ' + tx('downloading_update') + '0%';
-        let downloaded = 0;
-        let total = 0;
-        await update.downloadAndInstall((event) => {
-          if (event.event === 'Started') {
-            total = event.data.contentLength || 0;
-          } else if (event.event === 'Progress') {
-            downloaded += event.data.chunkLength || 0;
-            const pct = total > 0 ? Math.floor((downloaded / total) * 100) : 0;
-            status.textContent = tx('update_available') + update.version + ' — ' + tx('downloading_update') + pct + '%';
-          } else if (event.event === 'Finished') {
-            status.textContent = tx('installing_update');
-          }
-        });
-        // Should auto-restart on success; relaunch as a backup.
-        await relaunch();
+        status.textContent = tx('update_available') + meta.version + ' — ' + tx('downloading_update');
+        await invoke('plugin:updater|download_and_install');
+        status.textContent = tx('installing_update');
+        try { await invoke('plugin:process|restart'); } catch {}
       } catch (e) {
-        status.textContent = tx('update_error') + e;
+        status.textContent = tx('update_error') + (e && e.message ? e.message : e);
         btn.disabled = false;
       }
     }
-    $('update-btn').onclick = () => checkForUpdates({ silent: false });
+    $('update-btn').onclick = () => checkForUpdates();
 
     // ─── advanced collapse ─────────────────────────────────────
     $('advanced-toggle').onclick = () => {

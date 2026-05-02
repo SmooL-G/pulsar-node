@@ -1,6 +1,6 @@
 [package]
 name = "pulsar-desktop"
-version = "0.1.13"
+version = "0.1.14"
 description = "Pulsar Desktop — relay node + chat client"
 edition = "2021"
 authors = ["Pulsar Team"]
