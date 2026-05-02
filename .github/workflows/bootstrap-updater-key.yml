@@ -1,0 +1,48 @@
+name: Bootstrap Updater Key
+
+# One-shot helper: generates the Tauri updater signing keypair.
+# Run manually once. Then:
+#   1. Copy the printed PUBLIC key into desktop/src-tauri/tauri.conf.json (plugins.updater.pubkey).
+#   2. Download the artifact, base64-encode the file content, and store it as
+#      repo secret TAURI_SIGNING_PRIVATE_KEY.
+#   3. Delete this workflow file (or just stop running it).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@2
+
+      - name: Generate keypair (no password)
+        id: gen
+        run: |
+          tauri signer generate -w ./updater.key --no-password | tee gen.log
+          echo '--- pubkey block ---'
+          cat ./updater.key.pub
+
+      - name: Show public key
+        run: |
+          echo 'Public key (paste into tauri.conf.json plugins.updater.pubkey):'
+          echo
+          cat ./updater.key.pub
+          echo
+          echo 'After committing the public key, save the private key file as repo secret TAURI_SIGNING_PRIVATE_KEY.'
+          echo 'Use the raw file content as-is (Tauri CLI accepts it directly via env var).'
+
+      - name: Upload private key artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-private-key
+          path: |
+            updater.key
+            updater.key.pub
+          retention-days: 1

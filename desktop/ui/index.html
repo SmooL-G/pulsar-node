@@ -216,6 +216,11 @@
         <span data-i18n="autostart_label">Start on Windows login</span>
       </label>
       <div class="hint" data-i18n="autostart_hint">Runs in tray; the window stays hidden unless you open it.</div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="secondary" id="update-btn" data-i18n="check_updates">Check for updates</button>
+      </div>
+      <div class="hint" id="update-status"></div>
     </div>
 
     <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:16px">
@@ -229,6 +234,8 @@
   <script type="module">
     const { invoke } = window.__TAURI__.core;
     const { enable, disable, isEnabled } = window.__TAURI__.autostart;
+    const { check: checkUpdate } = window.__TAURI__.updater;
+    const { relaunch } = window.__TAURI__.process;
 
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
@@ -273,6 +280,13 @@
         autostart_off: 'Autostart OFF',
         autostart_failed: 'Autostart toggle failed: ',
         last_proof: 'Last proof: ',
+        check_updates: 'Check for updates',
+        checking_updates: 'Checking…',
+        no_updates: 'You are on the latest version ✓',
+        update_available: 'Update available: v',
+        downloading_update: 'Downloading update… ',
+        installing_update: 'Installing — the app will restart…',
+        update_error: 'Update check failed: ',
       },
       ru: {
         subtitle: 'Relay Node v0.1.4',
@@ -315,6 +329,13 @@
         autostart_off: 'Автозапуск ВЫКЛ',
         autostart_failed: 'Ошибка переключения автозапуска: ',
         last_proof: 'Последний proof: ',
+        check_updates: 'Проверить обновления',
+        checking_updates: 'Проверяю…',
+        no_updates: 'Установлена последняя версия ✓',
+        update_available: 'Доступно обновление: v',
+        downloading_update: 'Скачиваю обновление… ',
+        installing_update: 'Устанавливаю — приложение перезапустится…',
+        update_error: 'Ошибка проверки: ',
       },
     };
 
@@ -363,6 +384,43 @@
     }
     // Tokens are 64-char hex by default but rotation could differ — accept 32-128.
     const TOKEN_RE = /^[a-f0-9]{32,128}$/i;
+
+    // ─── updates ───────────────────────────────────────────────
+    async function checkForUpdates(opts) {
+      const silent = opts && opts.silent;
+      const status = $('update-status');
+      const btn = $('update-btn');
+      btn.disabled = true;
+      status.textContent = silent ? '' : tx('checking_updates');
+      try {
+        const update = await checkUpdate();
+        if (!update || !update.available) {
+          status.textContent = tx('no_updates');
+          btn.disabled = false;
+          return;
+        }
+        status.textContent = tx('update_available') + update.version + ' — ' + tx('downloading_update') + '0%';
+        let downloaded = 0;
+        let total = 0;
+        await update.downloadAndInstall((event) => {
+          if (event.event === 'Started') {
+            total = event.data.contentLength || 0;
+          } else if (event.event === 'Progress') {
+            downloaded += event.data.chunkLength || 0;
+            const pct = total > 0 ? Math.floor((downloaded / total) * 100) : 0;
+            status.textContent = tx('update_available') + update.version + ' — ' + tx('downloading_update') + pct + '%';
+          } else if (event.event === 'Finished') {
+            status.textContent = tx('installing_update');
+          }
+        });
+        // Should auto-restart on success; relaunch as a backup.
+        await relaunch();
+      } catch (e) {
+        status.textContent = tx('update_error') + e;
+        btn.disabled = false;
+      }
+    }
+    $('update-btn').onclick = () => checkForUpdates({ silent: false });
 
     // ─── advanced collapse ─────────────────────────────────────
     $('advanced-toggle').onclick = () => {

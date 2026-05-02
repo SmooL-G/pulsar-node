@@ -56,6 +56,18 @@
         "installMode": "perMachine",
         "languages": ["English", "Russian"]
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/SmooL-G/pulsar-node/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PASTE_PUBLIC_KEY_HERE",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

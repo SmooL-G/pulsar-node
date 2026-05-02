@@ -59,6 +59,9 @@ jobs:
       - name: Build Tauri app
         working-directory: desktop
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: npx @tauri-apps/cli build
 
       - name: Collect built artifacts (debug)
@@ -80,10 +83,103 @@ jobs:
 
             **Install (Linux):** download the `.deb` and `sudo dpkg -i pulsar-desktop_*_amd64.deb`.
 
+            Already running an older Pulsar Desktop? Use **Check for updates** in the app — no need to redownload.
+
             See the [README](https://github.com/SmooL-G/pulsar-node/blob/main/desktop/README.md) for setup.
           files: |
             desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/msi/*.msi.sig
             desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/*.exe.sig
             desktop/src-tauri/target/release/bundle/deb/*.deb
+            desktop/src-tauri/target/release/bundle/deb/*.deb.sig
             desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
           fail_on_unmatched_files: false
+
+  publish-manifest:
+    name: Publish updater manifest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets and emit latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Strip "desktop-v" prefix → semantic version for the manifest.
+          VERSION="${TAG#desktop-v}"
+          REPO='SmooL-G/pulsar-node'
+          API="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
+
+          mkdir -p out
+          # Fetch release JSON, derive download URLs.
+          curl -sSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' "$API" > out/release.json
+
+          # Helper: print the browser_download_url whose name matches the supplied glob.
+          asset_url() {
+            local pattern="$1"
+            jq -r --arg p "$pattern" '
+              .assets[] | select(.name | test($p)) | .browser_download_url
+            ' out/release.json | head -n1
+          }
+
+          # Helper: download a .sig asset and print its content (Tauri stores the signature inside).
+          asset_sig() {
+            local pattern="$1"
+            local url
+            url="$(asset_url "$pattern")"
+            if [ -z "$url" ]; then
+              echo ''
+              return
+            fi
+            curl -sSL -H "Authorization: Bearer ${GH_TOKEN}" "$url"
+          }
+
+          WIN_NSIS_URL="$(asset_url '\\.exe$')"
+          WIN_NSIS_SIG="$(asset_sig '\\.exe\\.sig$')"
+          LIN_DEB_URL="$(asset_url '\\.deb$')"
+          LIN_DEB_SIG="$(asset_sig '\\.deb\\.sig$')"
+          LIN_APP_URL="$(asset_url '\\.AppImage$')"
+          LIN_APP_SIG="$(asset_sig '\\.AppImage\\.sig$')"
+
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Build platforms object dynamically (only include platforms we have assets+sigs for).
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$PUB_DATE" \
+            --arg win_url "$WIN_NSIS_URL" \
+            --arg win_sig "$WIN_NSIS_SIG" \
+            --arg deb_url "$LIN_DEB_URL" \
+            --arg deb_sig "$LIN_DEB_SIG" \
+            --arg app_url "$LIN_APP_URL" \
+            --arg app_sig "$LIN_APP_SIG" \
+            '{
+              version: $version,
+              notes: ("Pulsar Desktop " + $version),
+              pub_date: $pub_date,
+              platforms: (
+                {}
+                + (if ($win_url|length) > 0 and ($win_sig|length) > 0
+                    then {"windows-x86_64": {url: $win_url, signature: $win_sig}}
+                    else {} end)
+                + (if ($deb_url|length) > 0 and ($deb_sig|length) > 0
+                    then {"linux-x86_64": {url: $deb_url, signature: $deb_sig}}
+                    else (if ($app_url|length) > 0 and ($app_sig|length) > 0
+                            then {"linux-x86_64": {url: $app_url, signature: $app_sig}}
+                            else {} end) end)
+              )
+            }' > out/latest.json
+
+          echo '--- latest.json ---'
+          cat out/latest.json
+
+      - name: Attach latest.json to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: out/latest.json
+          fail_on_unmatched_files: true
