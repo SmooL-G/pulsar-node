@@ -1,0 +1,81 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ''
+          - platform: ubuntu-22.04
+            # ubuntu-latest is now 24.04 which ships webkit2gtk-4.1
+            # only; Tauri 2 default templates still bind to the 4.0
+            # path. Pinning to 22.04 keeps webkit2gtk-4.0-dev available.
+            args: ''
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust deps
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri'
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup2.4-dev \
+            libjavascriptcoregtk-4.0-dev
+
+      - name: Generate icons
+        working-directory: desktop
+        run: |
+          npm install --no-audit --no-fund @tauri-apps/cli@^2.1.0
+          npx @tauri-apps/cli icon ./src-tauri/icons/source.png
+
+      - name: Build + release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Pulsar Desktop ${{ github.ref_name }}'
+          releaseBody: |
+            Pulsar Desktop relay node — ${{ github.ref_name }}
+
+            **Install (Windows):** download the `.exe` (NSIS installer) or `.msi` and run.
+
+            **Install (Linux):** download the `.deb` and `sudo dpkg -i pulsar-desktop_*_amd64.deb`.
+
+            See the [README](https://github.com/SmooL-G/pulsar-node/blob/main/desktop/README.md) for setup instructions and earnings details.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -1,0 +1,32 @@
+# Build artifacts
+node_modules/
+dist/
+target/
+
+# Generated icon variants — re-built by CI from icons/source.png
+desktop/src-tauri/icons/32x32.png
+desktop/src-tauri/icons/128x128.png
+desktop/src-tauri/icons/128x128@2x.png
+desktop/src-tauri/icons/icon.icns
+desktop/src-tauri/icons/icon.ico
+desktop/src-tauri/icons/icon.png
+desktop/src-tauri/icons/Square*.png
+desktop/src-tauri/icons/StoreLogo.png
+
+# Tauri auto-generated
+desktop/src-tauri/gen/
+desktop/src-tauri/Cargo.lock
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local env
+.env
+.env.local
+
+# Local runner cache
+.pulsar-runner.json

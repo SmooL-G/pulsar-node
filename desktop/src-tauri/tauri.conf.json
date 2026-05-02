@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pulsar Desktop",
+  "version": "0.1.4",
+  "identifier": "fun.pulsarchat.desktop",
+  "build": {
+    "frontendDist": "../ui",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Pulsar Desktop",
+        "width": 380,
+        "height": 560,
+        "minWidth": 360,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "menuOnLeftClick": false
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "deb", "appimage", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "Pulsar",
+    "shortDescription": "Run a Pulsar relay node and earn PLS",
+    "longDescription": "Pulsar Desktop bundles a signaling-relay node so you can support the Pulsar P2P network from your Windows machine and earn PLS for the uptime + relayed traffic.",
+    "category": "Utility",
+    "windows": {
+      "wix": {
+        "language": ["en-US", "ru-RU"]
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["English", "Russian"]
+      }
+    }
+  }
+}

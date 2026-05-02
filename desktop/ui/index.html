@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pulsar Desktop</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1115;
+      color: #e5e7eb;
+      min-height: 100vh;
+    }
+    .app { padding: 16px; max-width: 380px; margin: 0 auto; }
+    header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 18px;
+    }
+    header .logo {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: linear-gradient(135deg, #06b6d4, #6366f1);
+    }
+    header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+    header .ver { color: #6b7280; font-size: 11px; }
+
+    .card {
+      background: #1a1d24;
+      border: 1px solid #2a2f3a;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: #9ca3af;
+    }
+
+    .status-row { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.on { background: #10b981; box-shadow: 0 0 8px #10b98166; }
+    .dot.off { background: #6b7280; }
+    .status-text { font-weight: 600; }
+
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat {
+      background: #0f1115;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .stat .label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #e5e7eb; margin-top: 2px; }
+
+    label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    input {
+      width: 100%; box-sizing: border-box;
+      background: #0f1115;
+      border: 1px solid #2a2f3a;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      outline: none;
+    }
+    input:focus { border-color: #6366f1; }
+
+    button {
+      background: #6366f1; color: white;
+      border: none; border-radius: 8px;
+      padding: 9px 14px; font-weight: 600;
+      cursor: pointer; font-size: 13px;
+    }
+    button:hover { background: #4f46e5; }
+    button.secondary { background: #1f2937; color: #d1d5db; }
+    button.secondary:hover { background: #2a2f3a; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+    .row > * { flex: 1; }
+
+    a { color: #6366f1; text-decoration: none; font-size: 12px; }
+    a:hover { text-decoration: underline; }
+
+    .toast {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: #1a1d24; border: 1px solid #2a2f3a;
+      padding: 8px 14px; border-radius: 8px;
+      font-size: 12px;
+      opacity: 0; transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .err { color: #ef4444; }
+    .ok { color: #10b981; }
+
+    .hint {
+      font-size: 11px; color: #6b7280; margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo"></div>
+      <div>
+        <h1>Pulsar Desktop</h1>
+        <div class="ver">Relay Node v0.1.0</div>
+      </div>
+    </header>
+
+    <!-- Status -->
+    <div class="card" id="status-card">
+      <h2>Status</h2>
+      <div class="status-row">
+        <span class="dot off" id="dot"></span>
+        <span class="status-text" id="status-text">Not configured</span>
+      </div>
+      <div class="hint" id="last-proof"></div>
+    </div>
+
+    <!-- Stats (only when running) -->
+    <div class="card" id="stats-card" style="display:none">
+      <h2>Stats</h2>
+      <div class="stats">
+        <div class="stat"><div class="label">Uptime</div><div class="value" id="uptime">—</div></div>
+        <div class="stat"><div class="label">Connections</div><div class="value" id="conns">—</div></div>
+        <div class="stat"><div class="label">Peers (session)</div><div class="value" id="peers">—</div></div>
+        <div class="stat"><div class="label">Bytes pending</div><div class="value" id="pending">—</div></div>
+        <div class="stat"><div class="label">Lifetime traffic</div><div class="value" id="lifetime-bytes">—</div></div>
+        <div class="stat"><div class="label">Lifetime peers</div><div class="value" id="lifetime-peers">—</div></div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="card">
+      <h2>Credentials</h2>
+      <p class="hint" style="margin-top:0;margin-bottom:10px">
+        Get these from
+        <a href="https://pulsar-chat.fun/?settings=nodes" target="_blank">Pulsar → Settings → Nodes</a>
+        after registering a node (Verification Level 3 required).
+      </p>
+      <label>Node ID</label>
+      <input id="node-id" placeholder="00000000-0000-0000-0000-000000000000" />
+      <div style="height:8px"></div>
+      <label>Token</label>
+      <input id="token" type="password" placeholder="64-char hex secret" />
+      <div style="height:8px"></div>
+      <label>API URL <span style="color:#6b7280">(optional)</span></label>
+      <input id="api-url" placeholder="https://pulsar-chat.fun" />
+      <div style="height:8px"></div>
+      <label>Local port <span style="color:#6b7280">(optional)</span></label>
+      <input id="port" placeholder="3030" />
+      <div class="row">
+        <button class="secondary" id="save-btn">Save</button>
+        <button id="start-btn">Save & Start</button>
+      </div>
+    </div>
+
+    <!-- Auto-start toggle -->
+    <div class="card">
+      <h2>System</h2>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="autostart" style="width:auto" />
+        <span>Start on Windows login</span>
+      </label>
+      <div class="hint">Runs in tray; the window stays hidden unless you open it.</div>
+    </div>
+
+    <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:16px">
+      Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.
+      <a href="https://pulsar-chat.fun/mining" target="_blank">Learn more</a>.
+    </p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    const { invoke } = window.__TAURI__.core;
+    const { enable, disable, isEnabled } = window.__TAURI__.autostart;
+
+    const $ = (id) => document.getElementById(id);
+    const toast = (msg, kind) => {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (kind ? ' ' + kind : '');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    };
+
+    function fmtBytes(n) {
+      const x = Number(n);
+      if (x < 1024) return x + ' B';
+      if (x < 1024 * 1024) return (x / 1024).toFixed(1) + ' KB';
+      if (x < 1024 * 1024 * 1024) return (x / (1024 * 1024)).toFixed(2) + ' MB';
+      return (x / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+    function fmtUptime(sec) {
+      sec = Number(sec);
+      if (sec < 60) return sec + 's';
+      if (sec < 3600) return Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+      if (sec < 86400) return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
+      return Math.floor(sec/86400) + 'd ' + Math.floor((sec%86400)/3600) + 'h';
+    }
+
+    async function loadConfig() {
+      const cfg = await invoke('get_config');
+      $('node-id').value = cfg.node_id || '';
+      $('token').value = cfg.token || '';
+      $('api-url').value = cfg.api_url || '';
+      $('port').value = cfg.port || '';
+      try { $('autostart').checked = await isEnabled(); } catch {}
+    }
+
+    async function saveConfig() {
+      const cfg = {
+        node_id: $('node-id').value.trim() || null,
+        token: $('token').value.trim() || null,
+        api_url: $('api-url').value.trim() || null,
+        port: $('port').value.trim() ? Number($('port').value) : null,
+        autostart: $('autostart').checked,
+      };
+      await invoke('save_config', { newCfg: cfg });
+      return cfg;
+    }
+
+    async function startRunner() {
+      try { await invoke('start_runner'); toast('Runner started ✓', 'ok'); }
+      catch (e) { toast('Start failed: ' + e, 'err'); }
+    }
+
+    $('save-btn').onclick = async () => {
+      try { await saveConfig(); toast('Saved ✓', 'ok'); }
+      catch (e) { toast('Save failed: ' + e, 'err'); }
+    };
+
+    $('start-btn').onclick = async () => {
+      const cfg = await saveConfig();
+      if (!cfg.node_id || !cfg.token) {
+        toast('Node ID and Token required', 'err'); return;
+      }
+      await startRunner();
+      refresh();
+    };
+
+    $('autostart').onchange = async (e) => {
+      try {
+        if (e.target.checked) await enable(); else await disable();
+        toast(e.target.checked ? 'Autostart ON ✓' : 'Autostart OFF', 'ok');
+      } catch (err) {
+        toast('Autostart toggle failed: ' + err, 'err');
+        e.target.checked = !e.target.checked;
+      }
+    };
+
+    async function refresh() {
+      const running = await invoke('is_running');
+      $('dot').className = 'dot ' + (running ? 'on' : 'off');
+      $('status-text').textContent = running ? 'Online — earning PLS' : 'Stopped';
+      $('stats-card').style.display = running ? 'block' : 'none';
+      if (running) {
+        const s = await invoke('runner_status');
+        $('uptime').textContent = fmtUptime(s.uptime_seconds);
+        $('conns').textContent = s.active_connections;
+        $('peers').textContent = s.unique_peers_session;
+        $('pending').textContent = fmtBytes(s.bytes_pending);
+        $('lifetime-bytes').textContent = fmtBytes(s.lifetime_bytes);
+        $('lifetime-peers').textContent = s.lifetime_peers;
+        $('last-proof').textContent = s.last_proof_status ? 'Last proof: ' + s.last_proof_status : '';
+      }
+    }
+
+    loadConfig().then(refresh);
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

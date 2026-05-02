@@ -1,0 +1,39 @@
+{
+  "name": "@pulsar-chat/relay-runner",
+  "version": "0.1.0",
+  "description": "Run a Pulsar signaling-relay node and earn PLS for uptime",
+  "type": "module",
+  "bin": {
+    "pulsar-relay": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": ["pulsar", "webrtc", "signaling", "relay", "p2p", "node"],
+  "license": "MIT",
+  "homepage": "https://pulsar-chat.fun/mining",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SmooL-G/pulsar.git",
+    "directory": "apps/relay-runner"
+  }
+}

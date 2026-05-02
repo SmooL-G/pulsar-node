@@ -1,0 +1,14 @@
+{
+  "name": "@pulsar-chat/desktop",
+  "private": true,
+  "version": "0.1.4",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build",
+    "dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}
