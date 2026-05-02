@@ -14,6 +14,7 @@
       min-height: 100vh;
     }
     .app { padding: 16px; max-width: 380px; margin: 0 auto; }
+
     header {
       display: flex; align-items: center; gap: 10px;
       margin-bottom: 18px;
@@ -22,8 +23,17 @@
       width: 32px; height: 32px; border-radius: 8px;
       background: linear-gradient(135deg, #06b6d4, #6366f1);
     }
+    header .title-block { flex: 1; }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; }
     header .ver { color: #6b7280; font-size: 11px; }
+    .lang-toggle {
+      background: #1a1d24; border: 1px solid #2a2f3a;
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: #9ca3af; font-size: 11px;
+      cursor: pointer;
+    }
+    .lang-toggle:hover { color: #e5e7eb; }
 
     .card {
       background: #1a1d24;
@@ -43,6 +53,7 @@
     .dot { width: 8px; height: 8px; border-radius: 50%; }
     .dot.on { background: #10b981; box-shadow: 0 0 8px #10b98166; }
     .dot.off { background: #6b7280; }
+    .dot.warn { background: #f59e0b; box-shadow: 0 0 8px #f59e0b66; }
     .status-text { font-weight: 600; }
 
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -54,7 +65,8 @@
     .stat .label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
     .stat .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #e5e7eb; margin-top: 2px; }
 
-    label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }
+    label:first-child { margin-top: 0; }
     input {
       width: 100%; box-sizing: border-box;
       background: #0f1115;
@@ -71,7 +83,7 @@
     button {
       background: #6366f1; color: white;
       border: none; border-radius: 8px;
-      padding: 9px 14px; font-weight: 600;
+      padding: 10px 14px; font-weight: 600;
       cursor: pointer; font-size: 13px;
     }
     button:hover { background: #4f46e5; }
@@ -100,79 +112,115 @@
     .hint {
       font-size: 11px; color: #6b7280; margin-top: 6px;
     }
+
+    .who {
+      background: #0f1115;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+      flex-wrap: wrap;
+    }
+    .who strong { color: #e5e7eb; }
+    .who .ok-mark { color: #10b981; font-weight: bold; }
+
+    .advanced-toggle {
+      background: none; border: none; color: #6b7280;
+      font-size: 11px; padding: 6px 0; cursor: pointer;
+      display: flex; align-items: center; gap: 4px;
+      width: 100%; text-align: left;
+    }
+    .advanced-toggle:hover { color: #9ca3af; }
+    .advanced-body { padding-top: 4px; }
+    .advanced-body[hidden] { display: none; }
+    .arrow { font-size: 9px; transition: transform 0.15s; display: inline-block; }
+    .arrow.open { transform: rotate(90deg); }
   </style>
 </head>
 <body>
   <div class="app">
     <header>
       <div class="logo"></div>
-      <div>
+      <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver">Relay Node v0.1.0</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.2</div>
       </div>
+      <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
 
     <!-- Status -->
-    <div class="card" id="status-card">
-      <h2>Status</h2>
+    <div class="card">
+      <h2 data-i18n="status">Status</h2>
       <div class="status-row">
         <span class="dot off" id="dot"></span>
-        <span class="status-text" id="status-text">Not configured</span>
+        <span class="status-text" id="status-text" data-i18n="not_configured">Not configured</span>
       </div>
       <div class="hint" id="last-proof"></div>
     </div>
 
     <!-- Stats (only when running) -->
     <div class="card" id="stats-card" style="display:none">
-      <h2>Stats</h2>
+      <h2 data-i18n="stats">Stats</h2>
       <div class="stats">
-        <div class="stat"><div class="label">Uptime</div><div class="value" id="uptime">—</div></div>
-        <div class="stat"><div class="label">Connections</div><div class="value" id="conns">—</div></div>
-        <div class="stat"><div class="label">Peers (session)</div><div class="value" id="peers">—</div></div>
-        <div class="stat"><div class="label">Bytes pending</div><div class="value" id="pending">—</div></div>
-        <div class="stat"><div class="label">Lifetime traffic</div><div class="value" id="lifetime-bytes">—</div></div>
-        <div class="stat"><div class="label">Lifetime peers</div><div class="value" id="lifetime-peers">—</div></div>
+        <div class="stat"><div class="label" data-i18n="uptime">Uptime</div><div class="value" id="uptime">—</div></div>
+        <div class="stat"><div class="label" data-i18n="connections">Connections</div><div class="value" id="conns">—</div></div>
+        <div class="stat"><div class="label" data-i18n="peers_session">Peers (session)</div><div class="value" id="peers">—</div></div>
+        <div class="stat"><div class="label" data-i18n="bytes_pending">Bytes pending</div><div class="value" id="pending">—</div></div>
+        <div class="stat"><div class="label" data-i18n="lifetime_traffic">Lifetime traffic</div><div class="value" id="lifetime-bytes">—</div></div>
+        <div class="stat"><div class="label" data-i18n="lifetime_peers">Lifetime peers</div><div class="value" id="lifetime-peers">—</div></div>
       </div>
     </div>
 
-    <!-- Settings -->
+    <!-- Setup -->
     <div class="card">
-      <h2>Credentials</h2>
-      <p class="hint" style="margin-top:0;margin-bottom:10px">
-        Get these from
-        <a href="https://pulsar-chat.fun/?settings=nodes" target="_blank">Pulsar → Settings → Nodes</a>
-        after registering a node (Verification Level 3 required).
-      </p>
-      <label>Node ID</label>
-      <input id="node-id" placeholder="00000000-0000-0000-0000-000000000000" />
-      <div style="height:8px"></div>
-      <label>Token</label>
-      <input id="token" type="password" placeholder="64-char hex secret" />
-      <div style="height:8px"></div>
-      <label>API URL <span style="color:#6b7280">(optional)</span></label>
-      <input id="api-url" placeholder="https://pulsar-chat.fun" />
-      <div style="height:8px"></div>
-      <label>Local port <span style="color:#6b7280">(optional)</span></label>
-      <input id="port" placeholder="3030" />
+      <h2 data-i18n="setup">Setup</h2>
+      <p class="hint" id="setup-hint" style="margin-top:0;margin-bottom:10px"></p>
+
+      <!-- Recognized identity (only shows after token is validated) -->
+      <div class="who" id="who" style="display:none">
+        <span class="ok-mark">✓</span>
+        <span data-i18n="connected_as">Connected as</span>
+        <strong id="who-username">—</strong>
+        <span style="color:#6b7280" data-i18n="node_label">· node</span>
+        <strong id="who-label">—</strong>
+      </div>
+
+      <label data-i18n="token_label">Token</label>
+      <input id="token" type="text" placeholder="64-char hex" autocomplete="off" spellcheck="false" />
+      <div class="hint" id="token-hint"></div>
+
+      <button class="advanced-toggle" id="advanced-toggle">
+        <span class="arrow" id="advanced-arrow">▶</span>
+        <span data-i18n="advanced">Advanced</span>
+      </button>
+      <div class="advanced-body" id="advanced-body" hidden>
+        <label data-i18n="api_url">API URL (optional)</label>
+        <input id="api-url" placeholder="https://pulsar-chat.fun" />
+        <label data-i18n="local_port">Local port (optional)</label>
+        <input id="port" placeholder="3030" />
+      </div>
+
       <div class="row">
-        <button class="secondary" id="save-btn">Save</button>
-        <button id="start-btn">Save & Start</button>
+        <button class="secondary" id="save-btn" data-i18n="save">Save</button>
+        <button id="start-btn" data-i18n="save_start">Save & Start</button>
       </div>
     </div>
 
-    <!-- Auto-start toggle -->
+    <!-- System -->
     <div class="card">
-      <h2>System</h2>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <h2 data-i18n="system">System</h2>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:0">
         <input type="checkbox" id="autostart" style="width:auto" />
-        <span>Start on Windows login</span>
+        <span data-i18n="autostart_label">Start on Windows login</span>
       </label>
-      <div class="hint">Runs in tray; the window stays hidden unless you open it.</div>
+      <div class="hint" data-i18n="autostart_hint">Runs in tray; the window stays hidden unless you open it.</div>
     </div>
 
     <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:16px">
-      Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.
-      <a href="https://pulsar-chat.fun/mining" target="_blank">Learn more</a>.
+      <span data-i18n="footer_note">Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.</span>
+      <a href="https://pulsar-chat.fun/mining" target="_blank" data-i18n="learn_more">Learn more</a>.
     </p>
   </div>
 
@@ -182,6 +230,116 @@
     const { invoke } = window.__TAURI__.core;
     const { enable, disable, isEnabled } = window.__TAURI__.autostart;
 
+    // ─── i18n ─────────────────────────────────────────────────
+    const I18N = {
+      en: {
+        subtitle: 'Relay Node v0.1.2',
+        status: 'Status',
+        not_configured: 'Not configured',
+        configured_offline: 'Configured — not started',
+        starting: 'Starting…',
+        online: 'Online — earning PLS',
+        stats: 'Stats',
+        uptime: 'Uptime',
+        connections: 'Connections',
+        peers_session: 'Peers (session)',
+        bytes_pending: 'Bytes pending',
+        lifetime_traffic: 'Lifetime traffic',
+        lifetime_peers: 'Lifetime peers',
+        setup: 'Setup',
+        setup_hint: 'Get your token from Pulsar → Settings → Nodes → Register a node (Verification Level 3 required).',
+        connected_as: 'Connected as',
+        node_label: '· node',
+        token_label: 'Token',
+        token_hint: 'The 64-character hex string Pulsar shows once after registration.',
+        advanced: 'Advanced',
+        api_url: 'API URL (optional)',
+        local_port: 'Local port (optional)',
+        save: 'Save',
+        save_start: 'Save & Start',
+        system: 'System',
+        autostart_label: 'Start on Windows login',
+        autostart_hint: 'Runs in tray; the window stays hidden unless you open it.',
+        footer_note: 'Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.',
+        learn_more: 'Learn more',
+        saved: 'Saved ✓',
+        save_failed: 'Save failed: ',
+        runner_started: 'Runner started ✓',
+        start_failed: 'Start failed: ',
+        token_required: 'Token is required',
+        token_invalid: 'Invalid token (need a 32-128 char hex string)',
+        token_not_found: 'Token not recognized — register a node in Pulsar first',
+        autostart_on: 'Autostart ON ✓',
+        autostart_off: 'Autostart OFF',
+        autostart_failed: 'Autostart toggle failed: ',
+        last_proof: 'Last proof: ',
+      },
+      ru: {
+        subtitle: 'Relay Node v0.1.2',
+        status: 'Статус',
+        not_configured: 'Не настроено',
+        configured_offline: 'Настроено — не запущено',
+        starting: 'Запуск…',
+        online: 'Онлайн — зарабатываешь PLS',
+        stats: 'Статистика',
+        uptime: 'Аптайм',
+        connections: 'Соединения',
+        peers_session: 'Пиры (сессия)',
+        bytes_pending: 'Байт ожидает',
+        lifetime_traffic: 'Всего трафика',
+        lifetime_peers: 'Всего пиров',
+        setup: 'Настройка',
+        setup_hint: 'Получи свой токен в Pulsar → Настройки → Ноды → Зарегистрировать ноду (нужна верификация Level 3).',
+        connected_as: 'Подключён как',
+        node_label: '· нода',
+        token_label: 'Токен',
+        token_hint: '64-символьная hex-строка, которую Pulsar показал один раз после регистрации.',
+        advanced: 'Дополнительно',
+        api_url: 'API URL (необязательно)',
+        local_port: 'Локальный порт (необязательно)',
+        save: 'Сохранить',
+        save_start: 'Сохранить и запустить',
+        system: 'Система',
+        autostart_label: 'Запускать при входе в Windows',
+        autostart_hint: 'Работает в трее; окно скрыто пока не откроешь.',
+        footer_note: 'Награды появляются в кошельке Pulsar после 24ч непрерывного аптайма + 24ч заморозки.',
+        learn_more: 'Подробнее',
+        saved: 'Сохранено ✓',
+        save_failed: 'Ошибка сохранения: ',
+        runner_started: 'Нода запущена ✓',
+        start_failed: 'Ошибка запуска: ',
+        token_required: 'Введи токен',
+        token_invalid: 'Неверный формат токена (нужна hex-строка 32-128 символов)',
+        token_not_found: 'Токен не распознан — зарегистрируй ноду в Pulsar',
+        autostart_on: 'Автозапуск ВКЛ ✓',
+        autostart_off: 'Автозапуск ВЫКЛ',
+        autostart_failed: 'Ошибка переключения автозапуска: ',
+        last_proof: 'Последний proof: ',
+      },
+    };
+
+    let lang = localStorage.getItem('pulsar-lang') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
+    function applyLang() {
+      document.documentElement.lang = lang;
+      document.getElementById('lang-toggle').textContent = lang === 'ru' ? 'EN' : 'RU';
+      const dict = I18N[lang];
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.getElementById('setup-hint').textContent = dict.setup_hint;
+      document.getElementById('token-hint').textContent = dict.token_hint;
+    }
+    function tx(key) { return I18N[lang][key] || key; }
+
+    document.getElementById('lang-toggle').onclick = () => {
+      lang = lang === 'ru' ? 'en' : 'ru';
+      localStorage.setItem('pulsar-lang', lang);
+      applyLang();
+      refresh();
+    };
+
+    // ─── helpers ───────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
     const toast = (msg, kind) => {
       const t = $('toast');
@@ -189,7 +347,6 @@
       t.className = 'toast show' + (kind ? ' ' + kind : '');
       setTimeout(() => t.classList.remove('show'), 2500);
     };
-
     function fmtBytes(n) {
       const x = Number(n);
       if (x < 1024) return x + ' B';
@@ -204,21 +361,63 @@
       if (sec < 86400) return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
       return Math.floor(sec/86400) + 'd ' + Math.floor((sec%86400)/3600) + 'h';
     }
+    // Tokens are 64-char hex by default but rotation could differ — accept 32-128.
+    const TOKEN_RE = /^[a-f0-9]{32,128}$/i;
 
+    // ─── advanced collapse ─────────────────────────────────────
+    $('advanced-toggle').onclick = () => {
+      const body = $('advanced-body');
+      const arrow = $('advanced-arrow');
+      const open = body.hasAttribute('hidden');
+      if (open) { body.removeAttribute('hidden'); arrow.classList.add('open'); }
+      else { body.setAttribute('hidden', ''); arrow.classList.remove('open'); }
+    };
+
+    // ─── config + lookup ───────────────────────────────────────
     async function loadConfig() {
       const cfg = await invoke('get_config');
-      $('node-id').value = cfg.node_id || '';
       $('token').value = cfg.token || '';
       $('api-url').value = cfg.api_url || '';
       $('port').value = cfg.port || '';
       try { $('autostart').checked = await isEnabled(); } catch {}
+      // If token already saved, fetch identity for the "Connected as" badge
+      if (cfg.token) await lookupToken(cfg.token, cfg.api_url);
+    }
+
+    async function lookupToken(token, apiUrl) {
+      const url = (apiUrl || 'https://pulsar-chat.fun').replace(/\/$/, '') + '/api/v1/nodes/by-token';
+      try {
+        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+        if (!res.ok) {
+          if (res.status === 404) {
+            toast(tx('token_not_found'), 'err');
+            $('who').style.display = 'none';
+          }
+          return null;
+        }
+        const data = await res.json();
+        $('who-username').textContent = '@' + (data.owner.username || '?');
+        $('who-label').textContent = data.label || data.nodeId.slice(0, 8);
+        $('who').style.display = 'flex';
+        return data;
+      } catch (err) {
+        console.warn('lookup failed', err);
+        return null;
+      }
     }
 
     async function saveConfig() {
+      const token = $('token').value.trim();
+      if (!token) { toast(tx('token_required'), 'err'); throw new Error('no token'); }
+      if (!TOKEN_RE.test(token)) { toast(tx('token_invalid'), 'err'); throw new Error('bad token'); }
+      const apiUrl = $('api-url').value.trim() || null;
+      // Resolve nodeId from token via the platform
+      const info = await lookupToken(token, apiUrl);
+      if (!info) throw new Error('lookup failed');
       const cfg = {
-        node_id: $('node-id').value.trim() || null,
-        token: $('token').value.trim() || null,
-        api_url: $('api-url').value.trim() || null,
+        node_id: info.nodeId,
+        token,
+        api_url: apiUrl,
         port: $('port').value.trim() ? Number($('port').value) : null,
         autostart: $('autostart').checked,
       };
@@ -227,38 +426,48 @@
     }
 
     async function startRunner() {
-      try { await invoke('start_runner'); toast('Runner started ✓', 'ok'); }
-      catch (e) { toast('Start failed: ' + e, 'err'); }
+      try { await invoke('start_runner'); toast(tx('runner_started'), 'ok'); }
+      catch (e) { toast(tx('start_failed') + e, 'err'); }
     }
 
     $('save-btn').onclick = async () => {
-      try { await saveConfig(); toast('Saved ✓', 'ok'); }
-      catch (e) { toast('Save failed: ' + e, 'err'); }
+      try { await saveConfig(); toast(tx('saved'), 'ok'); }
+      catch { /* validators already toasted */ }
     };
 
     $('start-btn').onclick = async () => {
-      const cfg = await saveConfig();
-      if (!cfg.node_id || !cfg.token) {
-        toast('Node ID and Token required', 'err'); return;
-      }
-      await startRunner();
-      refresh();
+      try {
+        await saveConfig();
+        await startRunner();
+        refresh();
+      } catch { /* validators already toasted */ }
     };
 
     $('autostart').onchange = async (e) => {
       try {
         if (e.target.checked) await enable(); else await disable();
-        toast(e.target.checked ? 'Autostart ON ✓' : 'Autostart OFF', 'ok');
+        toast(e.target.checked ? tx('autostart_on') : tx('autostart_off'), 'ok');
       } catch (err) {
-        toast('Autostart toggle failed: ' + err, 'err');
+        toast(tx('autostart_failed') + err, 'err');
         e.target.checked = !e.target.checked;
       }
     };
 
     async function refresh() {
       const running = await invoke('is_running');
-      $('dot').className = 'dot ' + (running ? 'on' : 'off');
-      $('status-text').textContent = running ? 'Online — earning PLS' : 'Stopped';
+      const cfg = await invoke('get_config');
+      const dot = $('dot');
+      const txt = $('status-text');
+      if (running) {
+        dot.className = 'dot on';
+        txt.textContent = tx('online');
+      } else if (cfg.token && cfg.node_id) {
+        dot.className = 'dot warn';
+        txt.textContent = tx('configured_offline');
+      } else {
+        dot.className = 'dot off';
+        txt.textContent = tx('not_configured');
+      }
       $('stats-card').style.display = running ? 'block' : 'none';
       if (running) {
         const s = await invoke('runner_status');
@@ -268,10 +477,11 @@
         $('pending').textContent = fmtBytes(s.bytes_pending);
         $('lifetime-bytes').textContent = fmtBytes(s.lifetime_bytes);
         $('lifetime-peers').textContent = s.lifetime_peers;
-        $('last-proof').textContent = s.last_proof_status ? 'Last proof: ' + s.last_proof_status : '';
+        $('last-proof').textContent = s.last_proof_status ? tx('last_proof') + s.last_proof_status : '';
       }
     }
 
+    applyLang();
     loadConfig().then(refresh);
     setInterval(refresh, 5000);
   </script>
