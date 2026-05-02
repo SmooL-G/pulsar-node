@@ -174,12 +174,19 @@ jobs:
             curl -sSL -H "Authorization: Bearer ${GH_TOKEN}" "$url"
           }
 
-          WIN_NSIS_URL="$(asset_url '\\.exe$')"
-          WIN_NSIS_SIG="$(asset_sig '\\.exe\\.sig$')"
-          LIN_DEB_URL="$(asset_url '\\.deb$')"
-          LIN_DEB_SIG="$(asset_sig '\\.deb\\.sig$')"
-          LIN_APP_URL="$(asset_url '\\.AppImage$')"
-          LIN_APP_SIG="$(asset_sig '\\.AppImage\\.sig$')"
+          # NB: jq's --arg passes string verbatim — no escape processing — so
+          # patterns are written as plain regex (single backslash before dot).
+          WIN_NSIS_URL="$(asset_url '\.exe$')"
+          WIN_NSIS_SIG="$(asset_sig '\.exe\.sig$')"
+          LIN_DEB_URL="$(asset_url '\.deb$')"
+          LIN_DEB_SIG="$(asset_sig '\.deb\.sig$')"
+          LIN_APP_URL="$(asset_url '\.AppImage$')"
+          LIN_APP_SIG="$(asset_sig '\.AppImage\.sig$')"
+
+          echo "win_url=${WIN_NSIS_URL}"
+          echo "win_sig_len=${#WIN_NSIS_SIG}"
+          echo "deb_url=${LIN_DEB_URL}"
+          echo "deb_sig_len=${#LIN_DEB_SIG}"
 
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
