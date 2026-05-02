@@ -57,8 +57,10 @@ jobs:
       - name: Generate icons
         working-directory: desktop
         run: |
-          npm install --no-audit --no-fund @tauri-apps/cli@^2.1.0
-          npx @tauri-apps/cli icon ./src-tauri/icons/source.png
+          # Use npx --yes so the CLI is fetched & executed without a
+          # persistent npm install — that was hitting opaque exit-1 on
+          # the Linux runner, likely an optional-deps resolution edge.
+          npx --yes @tauri-apps/cli@2 icon ./src-tauri/icons/source.png
 
       - name: Build + release
         uses: tauri-apps/tauri-action@v0
