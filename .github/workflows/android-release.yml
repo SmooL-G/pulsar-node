@@ -1,0 +1,115 @@
+name: Android Release (TWA)
+
+on:
+  push:
+    tags:
+      - 'android-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Restore or generate keystore
+        id: keystore
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "Using stored keystore from secret"
+            echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > android.keystore
+            echo "password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_OUTPUT
+            echo "is_fresh=false" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::No ANDROID_KEYSTORE_B64 secret — generating fresh keystore"
+            PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
+            keytool -genkey -keystore android.keystore \
+              -alias android -keyalg RSA -keysize 2048 -validity 25000 \
+              -storepass "$PASSWORD" -keypass "$PASSWORD" \
+              -dname "CN=Pulsar, O=Pulsar, L=Internet, C=US"
+            echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+            echo "is_fresh=true" >> $GITHUB_OUTPUT
+            echo "GENERATED_PASSWORD=$PASSWORD" >> generated-keystore-info.txt
+          fi
+          # Print SHA-256 fingerprint (needed for assetlinks.json)
+          echo "::group::Keystore SHA-256 fingerprint"
+          keytool -list -v -keystore android.keystore -alias android \
+            -storepass "$(grep '^password=' $GITHUB_OUTPUT | cut -d= -f2)" 2>&1 | grep -E "SHA256:|SHA-256:" | head -1 | tee -a fingerprint.txt
+          echo "::endgroup::"
+
+      - name: Sync versionCode/Name from tag
+        run: |
+          # tag = android-v0.1.0  →  versionName=0.1.0, versionCode=monotonic int
+          VERSION="${GITHUB_REF_NAME#android-v}"
+          # Use timestamp as monotonic versionCode so any chronological release > previous
+          CODE=$(date -u +%y%m%d%H)
+          jq ".appVersionName = \"$VERSION\" | .appVersion = \"$VERSION\" | .appVersionCode = ($CODE | tonumber)" \
+            twa-manifest.json > twa-manifest.tmp && mv twa-manifest.tmp twa-manifest.json
+          echo "Built version $VERSION (code $CODE)"
+
+      - name: Generate Android project + build APK/AAB
+        env:
+          KEY_PWD: ${{ steps.keystore.outputs.password }}
+        run: |
+          # Bubblewrap reads ./twa-manifest.json + ./android.keystore.
+          # `update` regenerates the gradle project from the manifest;
+          # `build` produces signed APK + AAB.
+          npx --yes @bubblewrap/cli@latest update --skipVersionUpgrade
+          # Pipe passwords twice (keystore + key) so build is non-interactive
+          printf "%s\n%s\n" "$KEY_PWD" "$KEY_PWD" | \
+            npx --yes @bubblewrap/cli@latest build
+
+      - name: Rename outputs
+        run: |
+          ls -la
+          # Bubblewrap drops files in CWD; rename to friendlier names
+          [ -f app-release-signed.apk ] && cp app-release-signed.apk pulsar-${GITHUB_REF_NAME}.apk
+          [ -f app-release-bundle.aab ] && cp app-release-bundle.aab pulsar-${GITHUB_REF_NAME}.aab
+          ls -la pulsar-${GITHUB_REF_NAME}.* 2>/dev/null || true
+
+      - name: Upload keystore artifact (only for first build)
+        if: steps.keystore.outputs.is_fresh == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: keystore-FIRST-RUN-SAVE-THIS
+          path: |
+            android/android.keystore
+            android/generated-keystore-info.txt
+            android/fingerprint.txt
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'Pulsar Android ${{ github.ref_name }}'
+          body: |
+            **Pulsar for Android** — installable PWA wrapper.
+
+            ## Install
+            1. Download `pulsar-${{ github.ref_name }}.apk` below
+            2. On your phone: Settings → Security → enable "Install from unknown sources" for your file manager / browser
+            3. Open the .apk → Install
+            4. Launch — works fullscreen if Digital Asset Links are configured (see android/README.md)
+
+            All Pulsar features work as in the web version. Updates land automatically — no need to reinstall the APK when we ship a new website version.
+          files: |
+            android/pulsar-*.apk
+            android/pulsar-*.aab
+          fail_on_unmatched_files: false

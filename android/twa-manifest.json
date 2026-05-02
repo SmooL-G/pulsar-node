@@ -1,0 +1,43 @@
+{
+  "packageId": "fun.pulsarchat.app",
+  "host": "pulsar-chat.fun",
+  "name": "Pulsar",
+  "launcherName": "Pulsar",
+  "display": "standalone",
+  "themeColor": "#6366F1",
+  "navigationColor": "#0F1115",
+  "navigationColorDark": "#0F1115",
+  "navigationDividerColor": "#0F1115",
+  "navigationDividerColorDark": "#0F1115",
+  "backgroundColor": "#0F1115",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://pulsar-chat.fun/icons/icon-512.png",
+  "maskableIconUrl": "https://pulsar-chat.fun/icons/icon-maskable-512.png",
+  "monochromeIconUrl": "https://pulsar-chat.fun/icons/icon-512.png",
+  "appVersion": "1.0.0",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://pulsar-chat.fun/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": { "enabled": false },
+    "playBilling": { "enabled": false }
+  },
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://pulsar-chat.fun/",
+  "minSdkVersion": 21,
+  "orientation": "any",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  }
+}
