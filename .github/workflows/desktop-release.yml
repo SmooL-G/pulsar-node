@@ -70,12 +70,20 @@ jobs:
             mv src-tauri/tauri.conf.json.new src-tauri/tauri.conf.json
             echo "createUpdaterArtifacts removed."
           else
-            # Strip any CRLF the GH UI may have added when the user pasted the key.
-            printf '%s' "${KEY_VALUE}" | tr -d '\r' > "${RUNNER_TEMP}/signing.key"
+            # Tauri's bundler base64-decodes the env value directly, so the
+            # comment header from `tauri signer generate` (and our keygen
+            # script) must be stripped. Accept either format: extract just
+            # the longest base64-looking line.
+            printf '%s' "${KEY_VALUE}" \
+              | tr -d '\r' \
+              | grep -E '^[A-Za-z0-9+/=]+$' \
+              | awk '{ print length, $0 }' \
+              | sort -rn \
+              | head -n1 \
+              | cut -d' ' -f2- \
+              > "${RUNNER_TEMP}/signing.key"
             echo "key_path=${RUNNER_TEMP}/signing.key" >> "$GITHUB_OUTPUT"
-            echo "first line of stored key:"
-            head -n1 "${RUNNER_TEMP}/signing.key"
-            echo "key file size: $(wc -c < ${RUNNER_TEMP}/signing.key)"
+            echo "extracted key length: $(wc -c < ${RUNNER_TEMP}/signing.key)"
           fi
 
       - name: Build Tauri app
