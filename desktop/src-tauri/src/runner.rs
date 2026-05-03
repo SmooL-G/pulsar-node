@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::connect_async;
 
 const RATE_PER_SECOND: u32 = 60;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
@@ -225,6 +226,15 @@ pub struct RunnerConfig {
 /// background tokio tasks. Call once per app lifetime — second call is
 /// a no-op (the runner is self-cleaning when host process exits).
 ///
+/// Two parallel tasks per node:
+///   1. **Local TCP listener** on `cfg.port` for users who exposed the
+///      port themselves (port forwarding / Cloudflare Tunnel route).
+///   2. **Outbound tunnel** to `${api_url}/node-tunnel?token=${token}`.
+///      No port-forwarding required; the central relay multiplexes
+///      browser sessions through this connection. This is the "just
+///      paste your token" UX path — every node gets traffic regardless
+///      of NAT setup.
+///
 /// NB: spawn through `tauri::async_runtime` (Tauri's global tokio
 /// runtime), not `tokio::spawn`. The latter panics when called from a
 /// synchronous Tauri command — there's no runtime in the calling
@@ -236,13 +246,12 @@ pub fn start(cfg: RunnerConfig) {
     let listen_addr = format!("0.0.0.0:{}", cfg.port);
 
     // WS server task
-    let subs_clone = subs.clone();
+    let subs_local = subs.clone();
     tauri::async_runtime::spawn(async move {
         let listener = match TcpListener::bind(&listen_addr).await {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("[runner] bind failed: {}", e);
-                STATS.lock().last_proof_status = Some(format!("bind error: {}", e));
+                eprintln!("[runner] bind failed: {} (tunnel mode still active)", e);
                 return;
             }
         };
@@ -250,7 +259,7 @@ pub fn start(cfg: RunnerConfig) {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    let s = subs_clone.clone();
+                    let s = subs_local.clone();
                     tauri::async_runtime::spawn(handle_socket(stream, s));
                 }
                 Err(e) => {
@@ -258,6 +267,22 @@ pub fn start(cfg: RunnerConfig) {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
+        }
+    });
+
+    // Outbound tunnel task — auto-reconnects on drop.
+    let subs_tunnel = subs.clone();
+    let api_for_tunnel = cfg.api_url.clone();
+    let tok_for_tunnel = cfg.token.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let result = run_tunnel(&api_for_tunnel, &tok_for_tunnel, subs_tunnel.clone()).await;
+            eprintln!("[tunnel] disconnected: {:?}, reconnecting in 5s", result);
+            STATS.lock().last_proof_status = Some(format!(
+                "tunnel: {}",
+                result.unwrap_or_else(|e| e)
+            ));
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
 
@@ -276,6 +301,272 @@ pub fn start(cfg: RunnerConfig) {
             submit_proof(&api, &nid, &tok).await;
         }
     });
+}
+
+// ─── Tunnel client (outbound to central relay) ───────────────────────
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum TunnelIn {
+    Open { sid: u64 },
+    Msg { sid: u64, data: serde_json::Value },
+    Close { sid: u64 },
+    Ping,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum TunnelOut {
+    Msg { sid: u64, data: serde_json::Value },
+    #[allow(dead_code)]
+    Close { sid: u64 },
+    Pong,
+}
+
+/// Per-virtual-session state running the same pubsub state machine that
+/// `handle_socket` runs for direct TCP clients.
+struct SessionState {
+    subscribed_to: Option<String>,
+    sec_window: u64,
+    pub_this_sec: u32,
+}
+
+/// Open the tunnel ws and demux frames forever. Returns Err on any
+/// transport failure; caller schedules a reconnect.
+async fn run_tunnel(
+    api_url: &str,
+    token: &str,
+    subs: Subscribers,
+) -> Result<(), String> {
+    // Convert https://host -> wss://host/node-tunnel?token=...
+    let base = api_url.trim_end_matches('/');
+    let ws_base = if let Some(rest) = base.strip_prefix("https://") {
+        format!("wss://{}", rest)
+    } else if let Some(rest) = base.strip_prefix("http://") {
+        format!("ws://{}", rest)
+    } else {
+        format!("wss://{}", base)
+    };
+    let url = format!("{}/node-tunnel?token={}", ws_base, token);
+    eprintln!("[tunnel] connecting to {}", ws_base);
+
+    let (ws_stream, _resp) = connect_async(&url).await.map_err(|e| e.to_string())?;
+    let (mut write, mut read) = ws_stream.split();
+
+    eprintln!("[tunnel] connected");
+
+    // Outgoing pump — single tx, all session sends go through it framed.
+    let (tx, mut rx) = unbounded_channel::<Message>();
+    let outgoing = tauri::async_runtime::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if write.send(msg).await.is_err() { break; }
+        }
+    });
+
+    // sid → (per-session state, mpsc-tx that produces TunnelOut::Msg{sid,...})
+    let mut sessions: HashMap<u64, SessionState> = HashMap::new();
+    // Per-sid sender registered in `subs`. Carries packet payloads (the
+    // existing pubsub Outbound::Packet JSON). The tx wraps the data in
+    // TunnelOut::Msg{sid, data} before sending to the tunnel.
+    let mut session_tx_for_subs: HashMap<u64, UnboundedSender<Message>> = HashMap::new();
+
+    while let Some(Ok(msg)) = read.next().await {
+        let bytes = match &msg {
+            Message::Text(t) => t.as_bytes(),
+            Message::Binary(b) => b.as_slice(),
+            Message::Ping(p) => {
+                let _ = tx.send(Message::Pong(p.clone()));
+                continue;
+            }
+            Message::Close(_) => break,
+            _ => continue,
+        };
+        if bytes.len() > MAX_PAYLOAD_BYTES * 2 { continue; }
+
+        let frame: TunnelIn = match serde_json::from_slice(bytes) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+
+        match frame {
+            TunnelIn::Ping => {
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&TunnelOut::Pong).unwrap().into(),
+                ));
+            }
+            TunnelIn::Open { sid } => {
+                sessions.insert(sid, SessionState {
+                    subscribed_to: None,
+                    sec_window: 0,
+                    pub_this_sec: 0,
+                });
+                // Per-sid forwarder: receives raw JSON strings (Outbound::Packet)
+                // from subs map, wraps in TunnelOut::Msg{sid, data} and pushes
+                // into the tunnel outgoing pump.
+                let (sid_tx, mut sid_rx) = unbounded_channel::<Message>();
+                session_tx_for_subs.insert(sid, sid_tx);
+                let tunnel_tx = tx.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(msg) = sid_rx.recv().await {
+                        let data_str = match msg {
+                            Message::Text(t) => t.to_string(),
+                            _ => continue,
+                        };
+                        let data: serde_json::Value = match serde_json::from_str(&data_str) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        let frame_str = serde_json::to_string(&TunnelOut::Msg { sid, data }).unwrap();
+                        if tunnel_tx.send(Message::Text(frame_str.into())).is_err() { break; }
+                    }
+                });
+                STATS.lock().active_connections += 1;
+            }
+            TunnelIn::Msg { sid, data } => {
+                let inner_str = match serde_json::to_string(&data) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let parsed: Inbound = match serde_json::from_str(&inner_str) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let session = match sessions.get_mut(&sid) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let sid_tx = match session_tx_for_subs.get(&sid) {
+                    Some(t) => t.clone(),
+                    None => continue,
+                };
+                handle_pubsub_inbound(&subs, session, sid_tx, parsed);
+            }
+            TunnelIn::Close { sid } => {
+                if let Some(state) = sessions.remove(&sid) {
+                    // Remove this sid's subscription from subs.
+                    if let (Some(prev), Some(sid_tx)) = (
+                        state.subscribed_to,
+                        session_tx_for_subs.remove(&sid),
+                    ) {
+                        let mut s = subs.lock();
+                        if let Some(list) = s.get_mut(&prev) {
+                            list.retain(|t| !t.same_channel(&sid_tx));
+                            if list.is_empty() { s.remove(&prev); }
+                        }
+                    }
+                    let mut st = STATS.lock();
+                    st.active_connections = st.active_connections.saturating_sub(1);
+                }
+            }
+        }
+    }
+
+    // Cleanup all sessions on tunnel drop.
+    for (sid, state) in sessions.into_iter() {
+        if let (Some(prev), Some(sid_tx)) = (
+            state.subscribed_to,
+            session_tx_for_subs.remove(&sid),
+        ) {
+            let mut s = subs.lock();
+            if let Some(list) = s.get_mut(&prev) {
+                list.retain(|t| !t.same_channel(&sid_tx));
+                if list.is_empty() { s.remove(&prev); }
+            }
+        }
+    }
+    {
+        let mut st = STATS.lock();
+        st.active_connections = 0;
+    }
+    drop(tx);
+    let _ = outgoing.await;
+    Ok(())
+}
+
+/// Run one pubsub-protocol message for a virtual tunnel session.
+/// Pulled out of `handle_socket` so direct + tunnel paths share logic.
+fn handle_pubsub_inbound(
+    subs: &Subscribers,
+    session: &mut SessionState,
+    tx: UnboundedSender<Message>,
+    msg: Inbound,
+) {
+    match msg {
+        Inbound::Ping => {
+            let _ = tx.send(Message::Text(
+                serde_json::to_string(&Outbound::Pong).unwrap().into(),
+            ));
+        }
+        Inbound::Subscribe { pubkey } => {
+            if !valid_pubkey(&pubkey) {
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&Outbound::Error { code: "BAD_PUBKEY" }).unwrap().into(),
+                ));
+                return;
+            }
+            if let Some(prev) = session.subscribed_to.take() {
+                let mut s = subs.lock();
+                if let Some(list) = s.get_mut(&prev) {
+                    list.retain(|t| !t.same_channel(&tx));
+                    if list.is_empty() { s.remove(&prev); }
+                }
+            }
+            subs.lock().entry(pubkey.clone()).or_default().push(tx.clone());
+            {
+                let mut st = STATS.lock();
+                st.unique_peers.insert(pubkey.clone());
+                st.lifetime_peers.insert(pubkey.clone());
+            }
+            let _ = tx.send(Message::Text(
+                serde_json::to_string(&Outbound::Subscribed { pubkey: &pubkey }).unwrap().into(),
+            ));
+            session.subscribed_to = Some(pubkey);
+        }
+        Inbound::Publish { to, payload } => {
+            let from = match &session.subscribed_to {
+                Some(p) => p.clone(),
+                None => {
+                    let _ = tx.send(Message::Text(
+                        serde_json::to_string(&Outbound::Error { code: "NOT_SUBSCRIBED" }).unwrap().into(),
+                    ));
+                    return;
+                }
+            };
+            if !valid_pubkey(&to) {
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&Outbound::Error { code: "BAD_TO" }).unwrap().into(),
+                ));
+                return;
+            }
+            let now_sec = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs()).unwrap_or(0);
+            if now_sec != session.sec_window {
+                session.sec_window = now_sec;
+                session.pub_this_sec = 0;
+            }
+            session.pub_this_sec += 1;
+            if session.pub_this_sec > RATE_PER_SECOND {
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&Outbound::Error { code: "RATE_LIMIT" }).unwrap().into(),
+                ));
+                return;
+            }
+            let out_str = serde_json::to_string(&Outbound::Packet {
+                from: &from, payload: &payload,
+            }).unwrap();
+            let out_len = out_str.len() as u64;
+            let targets: Vec<UnboundedSender<Message>> = subs.lock()
+                .get(&to).cloned().unwrap_or_default();
+            let mut delivered = 0u64;
+            for t in targets {
+                if t.send(Message::Text(out_str.clone().into())).is_ok() { delivered += 1; }
+            }
+            let mut st = STATS.lock();
+            st.bytes_relayed = st.bytes_relayed.saturating_add(out_len * delivered);
+            st.lifetime_bytes = st.lifetime_bytes.saturating_add(out_len * delivered);
+        }
+    }
 }
 
 #[derive(Serialize)]

@@ -1,6 +1,6 @@
 [package]
 name = "pulsar-desktop"
-version = "0.1.16"
+version = "0.1.17"
 description = "Pulsar Desktop — relay node + chat client"
 edition = "2021"
 authors = ["Pulsar Team"]
@@ -24,7 +24,7 @@ tauri-plugin-process = "2"
 
 # Runner: ws pubsub + HTTP proof submission
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1", features = ["derive"] }
