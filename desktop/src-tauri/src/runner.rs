@@ -224,6 +224,11 @@ pub struct RunnerConfig {
 /// Boot the relay + proof loop. Returns immediately; the work runs in
 /// background tokio tasks. Call once per app lifetime — second call is
 /// a no-op (the runner is self-cleaning when host process exits).
+///
+/// NB: spawn through `tauri::async_runtime` (Tauri's global tokio
+/// runtime), not `tokio::spawn`. The latter panics when called from a
+/// synchronous Tauri command — there's no runtime in the calling
+/// thread, just on Tauri's worker pool.
 pub fn start(cfg: RunnerConfig) {
     STATS.lock().started_at = Some(Instant::now());
 
@@ -232,7 +237,7 @@ pub fn start(cfg: RunnerConfig) {
 
     // WS server task
     let subs_clone = subs.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let listener = match TcpListener::bind(&listen_addr).await {
             Ok(l) => l,
             Err(e) => {
@@ -246,7 +251,7 @@ pub fn start(cfg: RunnerConfig) {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     let s = subs_clone.clone();
-                    tokio::spawn(handle_socket(stream, s));
+                    tauri::async_runtime::spawn(handle_socket(stream, s));
                 }
                 Err(e) => {
                     eprintln!("[runner] accept error: {}", e);
@@ -260,7 +265,7 @@ pub fn start(cfg: RunnerConfig) {
     let api = cfg.api_url.clone();
     let nid = cfg.node_id.clone();
     let tok = cfg.token.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         // First proof after 5s so registration is visible immediately.
         tokio::time::sleep(Duration::from_secs(5)).await;
         submit_proof(&api, &nid, &tok).await;
