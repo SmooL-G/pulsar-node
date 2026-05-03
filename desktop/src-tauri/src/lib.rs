@@ -52,7 +52,10 @@ async fn save_config(
 fn start_runner(state: tauri::State<'_, State>) -> Result<(), String> {
     let mut started = state.started.lock().unwrap();
     if *started {
-        return Err("already running".into());
+        // Idempotent: the runner auto-starts at app boot when creds are
+        // present, and the user often clicks Save & Start again later.
+        // Returning Err here surfaces a scary toast for nothing.
+        return Ok(());
     }
     let cfg = state.cfg.lock().unwrap().clone();
     let node_id = cfg.node_id.clone().ok_or("missing node_id")?;
