@@ -277,11 +277,12 @@ pub fn start(cfg: RunnerConfig) {
     tauri::async_runtime::spawn(async move {
         loop {
             let result = run_tunnel(&api_for_tunnel, &tok_for_tunnel, subs_tunnel.clone()).await;
-            eprintln!("[tunnel] disconnected: {:?}, reconnecting in 5s", result);
-            STATS.lock().last_proof_status = Some(format!(
-                "tunnel: {}",
-                result.unwrap_or_else(|e| e)
-            ));
+            let status = match result {
+                Ok(()) => "tunnel: disconnected".to_string(),
+                Err(e) => format!("tunnel error: {}", e),
+            };
+            eprintln!("[tunnel] {}, reconnecting in 5s", status);
+            STATS.lock().last_proof_status = Some(status);
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
