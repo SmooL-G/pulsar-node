@@ -147,7 +147,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.21</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.22</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -252,7 +252,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.21',
+        subtitle: 'Relay Node v0.1.22',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -304,7 +304,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.21',
+        subtitle: 'Relay Node v0.1.22',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -434,9 +434,9 @@
               status.textContent = tx('installing_update');
             }
           };
-          await invoke('plugin:updater|download_and_install', { onEvent: ch });
+          await invoke('plugin:updater|download_and_install', { rid: meta.rid, onEvent: ch });
         } else {
-          await invoke('plugin:updater|download_and_install');
+          await invoke('plugin:updater|download_and_install', { rid: meta.rid });
         }
         status.textContent = tx('installing_update');
         try { await invoke('plugin:process|restart'); } catch {}
