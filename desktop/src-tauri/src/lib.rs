@@ -27,6 +27,7 @@ const STORE_FILE: &str = "config.json";
 struct State {
     cfg: Mutex<AppConfig>,
     started: Mutex<bool>,
+    runner: Mutex<Option<runner::RunnerHandle>>,
 }
 
 #[tauri::command]
@@ -54,7 +55,6 @@ fn start_runner(state: tauri::State<'_, State>) -> Result<(), String> {
     if *started {
         // Idempotent: the runner auto-starts at app boot when creds are
         // present, and the user often clicks Save & Start again later.
-        // Returning Err here surfaces a scary toast for nothing.
         return Ok(());
     }
     let cfg = state.cfg.lock().unwrap().clone();
@@ -63,8 +63,22 @@ fn start_runner(state: tauri::State<'_, State>) -> Result<(), String> {
     let api_url = cfg.api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
     let port = cfg.port.unwrap_or(3030);
 
-    runner::start(runner::RunnerConfig { api_url, node_id, token, port });
+    let handle = runner::start(runner::RunnerConfig { api_url, node_id, token, port });
+    *state.runner.lock().unwrap() = Some(handle);
     *started = true;
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_runner(state: tauri::State<'_, State>) -> Result<(), String> {
+    let mut started = state.started.lock().unwrap();
+    if !*started {
+        return Ok(()); // already stopped
+    }
+    if let Some(h) = state.runner.lock().unwrap().take() {
+        h.abort();
+    }
+    *started = false;
     Ok(())
 }
 
@@ -159,6 +173,7 @@ pub fn run() {
             get_config,
             save_config,
             start_runner,
+            stop_runner,
             runner_status,
             is_running,
             lookup_token,
@@ -169,6 +184,7 @@ pub fn run() {
             let state = State {
                 cfg: Mutex::new(cfg.clone()),
                 started: Mutex::new(false),
+                runner: Mutex::new(None),
             };
             app.manage(state);
 
@@ -176,13 +192,14 @@ pub fn run() {
             if cfg.node_id.is_some() && cfg.token.is_some() {
                 let api_url = cfg.api_url.clone().unwrap_or_else(|| "https://pulsar-chat.fun".into());
                 let port = cfg.port.unwrap_or(3030);
-                runner::start(runner::RunnerConfig {
+                let handle = runner::start(runner::RunnerConfig {
                     api_url,
                     node_id: cfg.node_id.unwrap(),
                     token: cfg.token.unwrap(),
                     port,
                 });
                 let s: tauri::State<State> = app.state();
+                *s.runner.lock().unwrap() = Some(handle);
                 *s.started.lock().unwrap() = true;
             }
 

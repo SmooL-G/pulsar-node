@@ -222,9 +222,32 @@ pub struct RunnerConfig {
     pub port: u16,
 }
 
-/// Boot the relay + proof loop. Returns immediately; the work runs in
-/// background tokio tasks. Call once per app lifetime — second call is
-/// a no-op (the runner is self-cleaning when host process exits).
+/// Handle for a running runner — keeps the JoinHandles so we can stop
+/// everything cleanly when the user clicks Stop. Aborting drops the
+/// listening socket and tears down the outbound tunnel.
+pub struct RunnerHandle {
+    listener: tauri::async_runtime::JoinHandle<()>,
+    tunnel: tauri::async_runtime::JoinHandle<()>,
+    proof: tauri::async_runtime::JoinHandle<()>,
+}
+
+impl RunnerHandle {
+    pub fn abort(&self) {
+        self.listener.abort();
+        self.tunnel.abort();
+        self.proof.abort();
+        // Reset session counters so the UI shows a clean state.
+        let mut st = STATS.lock();
+        st.started_at = None;
+        st.active_connections = 0;
+        st.bytes_relayed = 0;
+        st.unique_peers.clear();
+        st.last_proof_status = Some("stopped".to_string());
+    }
+}
+
+/// Boot the relay + proof loop. Returns a `RunnerHandle` whose tasks
+/// run in the background; call `.abort()` on it to stop them.
 ///
 /// Two parallel tasks per node:
 ///   1. **Local TCP listener** on `cfg.port` for users who exposed the
@@ -239,7 +262,7 @@ pub struct RunnerConfig {
 /// runtime), not `tokio::spawn`. The latter panics when called from a
 /// synchronous Tauri command — there's no runtime in the calling
 /// thread, just on Tauri's worker pool.
-pub fn start(cfg: RunnerConfig) {
+pub fn start(cfg: RunnerConfig) -> RunnerHandle {
     STATS.lock().started_at = Some(Instant::now());
 
     let subs: Subscribers = Arc::new(Mutex::new(HashMap::new()));
@@ -247,7 +270,7 @@ pub fn start(cfg: RunnerConfig) {
 
     // WS server task
     let subs_local = subs.clone();
-    tauri::async_runtime::spawn(async move {
+    let listener_handle = tauri::async_runtime::spawn(async move {
         let listener = match TcpListener::bind(&listen_addr).await {
             Ok(l) => l,
             Err(e) => {
@@ -274,7 +297,7 @@ pub fn start(cfg: RunnerConfig) {
     let subs_tunnel = subs.clone();
     let api_for_tunnel = cfg.api_url.clone();
     let tok_for_tunnel = cfg.token.clone();
-    tauri::async_runtime::spawn(async move {
+    let tunnel_handle = tauri::async_runtime::spawn(async move {
         loop {
             let result = run_tunnel(&api_for_tunnel, &tok_for_tunnel, subs_tunnel.clone()).await;
             let status = match result {
@@ -291,7 +314,7 @@ pub fn start(cfg: RunnerConfig) {
     let api = cfg.api_url.clone();
     let nid = cfg.node_id.clone();
     let tok = cfg.token.clone();
-    tauri::async_runtime::spawn(async move {
+    let proof_handle = tauri::async_runtime::spawn(async move {
         // First proof after 5s so registration is visible immediately.
         tokio::time::sleep(Duration::from_secs(5)).await;
         submit_proof(&api, &nid, &tok).await;
@@ -302,6 +325,8 @@ pub fn start(cfg: RunnerConfig) {
             submit_proof(&api, &nid, &tok).await;
         }
     });
+
+    RunnerHandle { listener: listener_handle, tunnel: tunnel_handle, proof: proof_handle }
 }
 
 // ─── Tunnel client (outbound to central relay) ───────────────────────
