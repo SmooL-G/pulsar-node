@@ -6,10 +6,19 @@
   <title>Pulsar Desktop</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; }
-    /* Hide scrollbars even if overflow ever sneaks in — the window is
-       fixed-size so we never want to see them. */
-    *::-webkit-scrollbar { display: none; }
+    html, body { height: 100%; }
+    body { overflow-y: auto; overflow-x: hidden; }
+    /* Custom scrollbar — thin purple thumb, transparent track. Replaces
+       the chunky default Windows scrollbar. */
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb {
+      background: rgba(167, 139, 250, 0.25);
+      border-radius: 3px;
+      transition: background 0.2s;
+    }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(167, 139, 250, 0.5); }
+    *::-webkit-scrollbar-corner { background: transparent; }
     body {
       margin: 0;
       font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -292,7 +301,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.28</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.29</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -481,7 +490,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.28',
+        subtitle: 'Relay Node v0.1.29',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -540,7 +549,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.28',
+        subtitle: 'Relay Node v0.1.29',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
