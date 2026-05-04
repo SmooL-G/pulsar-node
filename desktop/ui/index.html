@@ -301,7 +301,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.30</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.31</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -454,35 +454,28 @@
     // Programmatic drag — try the JS API first (most reliable in Tauri 2),
     // fall back to the raw plugin invoke. data-tauri-drag-region alone
     // is unreliable on first paint.
-    async function startDrag() {
-      // Try all known Tauri 2 paths in order; log which one fires.
+    // Fire-and-forget — never `await`. The OS takes over the drag and
+    // the mouseup that resolves startDragging() may never reach the
+    // webview, leaving the promise pending. Awaiting it blocked
+    // subsequent mousedown handlers (drag worked once, then nothing).
+    function startDrag() {
       const T = window.__TAURI__;
-      const tries = [];
-      try {
-        if (T?.webviewWindow?.getCurrentWebviewWindow) {
-          tries.push('webviewWindow.getCurrentWebviewWindow().startDragging');
-          await T.webviewWindow.getCurrentWebviewWindow().startDragging();
-          return;
-        }
-      } catch (e) { console.warn('[drag] webviewWindow path:', e); }
-      try {
-        if (T?.window?.getCurrentWindow) {
-          tries.push('window.getCurrentWindow().startDragging');
-          await T.window.getCurrentWindow().startDragging();
-          return;
-        }
-      } catch (e) { console.warn('[drag] window path:', e); }
-      try {
-        tries.push('invoke(plugin:window|start_dragging)');
-        await invoke('plugin:window|start_dragging');
+      const noop = () => {};
+      if (T?.webviewWindow?.getCurrentWebviewWindow) {
+        T.webviewWindow.getCurrentWebviewWindow().startDragging().catch(noop);
         return;
-      } catch (e) { console.warn('[drag] invoke path:', e); }
-      console.warn('[drag] all paths failed. Tried:', tries, 'globals:', Object.keys(T || {}));
+      }
+      if (T?.window?.getCurrentWindow) {
+        T.window.getCurrentWindow().startDragging().catch(noop);
+        return;
+      }
+      invoke('plugin:window|start_dragging').catch((e) =>
+        console.warn('[drag] invoke failed:', e),
+      );
     }
     document.querySelector('.titlebar').addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;            // left click only
       if (e.target.closest('button')) return; // skip the min/close buttons
-      e.preventDefault();
       startDrag();
     });
 
@@ -500,7 +493,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.30',
+        subtitle: 'Relay Node v0.1.31',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -559,7 +552,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.30',
+        subtitle: 'Relay Node v0.1.31',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
