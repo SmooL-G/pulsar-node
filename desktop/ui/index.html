@@ -6,6 +6,10 @@
   <title>Pulsar Desktop</title>
   <style>
     * { box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    /* Hide scrollbars even if overflow ever sneaks in — the window is
+       fixed-size so we never want to see them. */
+    *::-webkit-scrollbar { display: none; }
     body {
       margin: 0;
       font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -16,9 +20,8 @@
         #0a0c12;
       background-attachment: fixed;
       color: #e5e7eb;
-      min-height: 100vh;
     }
-    .app { padding: 0 16px 16px; max-width: 380px; margin: 0 auto; }
+    .app { padding: 0 16px 12px; max-width: 420px; margin: 0 auto; }
 
     /* Custom title bar — replaces the OS chrome we hid via decorations:false. */
     .titlebar {
@@ -82,13 +85,13 @@
       background: linear-gradient(180deg, rgba(26, 29, 36, 0.85) 0%, rgba(20, 23, 30, 0.85) 100%);
       border: 1px solid rgba(255, 255, 255, 0.05);
       border-radius: 14px;
-      padding: 14px 16px;
-      margin-bottom: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
       backdrop-filter: blur(8px);
       box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.25);
     }
     .card h2 {
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       font-size: 11px; font-weight: 700;
       letter-spacing: 0.08em; text-transform: uppercase;
       color: #9ca3af;
@@ -289,7 +292,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.27</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.28</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -336,16 +339,14 @@
       </div>
     </div>
 
-    <!-- Stats (only when running) -->
+    <!-- Stats (only when running) — 4 essential metrics, 2x2 grid. -->
     <div class="card" id="stats-card" style="display:none">
       <h2 data-i18n="stats">Stats</h2>
       <div class="stats">
         <div class="stat"><div class="label" data-i18n="uptime">Uptime</div><div class="value" id="uptime">—</div></div>
         <div class="stat"><div class="label" data-i18n="connections">Connections</div><div class="value" id="conns">—</div></div>
         <div class="stat"><div class="label" data-i18n="peers_session">Peers (session)</div><div class="value" id="peers">—</div></div>
-        <div class="stat"><div class="label" data-i18n="bytes_pending">Bytes pending</div><div class="value" id="pending">—</div></div>
         <div class="stat"><div class="label" data-i18n="lifetime_traffic">Lifetime traffic</div><div class="value" id="lifetime-bytes">—</div></div>
-        <div class="stat"><div class="label" data-i18n="lifetime_peers">Lifetime peers</div><div class="value" id="lifetime-peers">—</div></div>
       </div>
     </div>
 
@@ -441,14 +442,29 @@
       e.stopPropagation();
       invoke('plugin:window|close');
     };
-    // Programmatic drag fallback — data-tauri-drag-region in Tauri 2 only
-    // works once the @tauri-apps/api/window listener registers, which is
-    // sometimes too late on first paint. mousedown → start_dragging is
-    // bulletproof.
+    // Programmatic drag — try the JS API first (most reliable in Tauri 2),
+    // fall back to the raw plugin invoke. data-tauri-drag-region alone
+    // is unreliable on first paint.
+    async function startDrag() {
+      const T = window.__TAURI__;
+      try {
+        if (T && T.webviewWindow && T.webviewWindow.getCurrentWebviewWindow) {
+          await T.webviewWindow.getCurrentWebviewWindow().startDragging();
+          return;
+        }
+        if (T && T.window && T.window.getCurrentWindow) {
+          await T.window.getCurrentWindow().startDragging();
+          return;
+        }
+      } catch (e) { /* fall through to invoke */ }
+      try { await invoke('plugin:window|start_dragging'); }
+      catch (e) { console.warn('[drag] failed:', e); }
+    }
     document.querySelector('.titlebar').addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;            // left click only
       if (e.target.closest('button')) return; // skip the min/close buttons
-      invoke('plugin:window|start_dragging').catch(() => {});
+      e.preventDefault();
+      startDrag();
     });
 
     // Tab switching
@@ -465,7 +481,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.27',
+        subtitle: 'Relay Node v0.1.28',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -524,7 +540,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.27',
+        subtitle: 'Relay Node v0.1.28',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -795,9 +811,7 @@
         $('uptime').textContent = fmtUptime(s.uptime_seconds);
         $('conns').textContent = s.active_connections;
         $('peers').textContent = s.unique_peers_session;
-        $('pending').textContent = fmtBytes(s.bytes_pending);
         $('lifetime-bytes').textContent = fmtBytes(s.lifetime_bytes);
-        $('lifetime-peers').textContent = s.lifetime_peers;
         $('last-proof').textContent = s.last_proof_status ? tx('last_proof') + s.last_proof_status : '';
         // Snapshot session base for the smooth client-side ticker.
         sessionBase = projectedFromStats(s);
