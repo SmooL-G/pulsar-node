@@ -92,6 +92,33 @@ fn is_running(state: tauri::State<'_, State>) -> bool {
     *state.started.lock().unwrap()
 }
 
+/// Earnings + 24h activity for a node — used by the Earnings card.
+/// Same Rust-side fetch trick as lookup_token to avoid the webview CORS.
+#[tauri::command]
+async fn fetch_stats(
+    api_url: Option<String>,
+    node_id: String,
+    token: String,
+) -> Result<serde_json::Value, String> {
+    let base = api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
+    let url = format!("{}/api/v1/nodes/{}/stats", base.trim_end_matches('/'), node_id);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {}", status.as_u16()));
+    }
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Server-side token lookup — bypasses the WebView's CORS by doing the
 /// HTTP call from Rust. Returns the parsed JSON the platform sends
 /// back, or an error string for the UI to toast.
@@ -177,6 +204,7 @@ pub fn run() {
             runner_status,
             is_running,
             lookup_token,
+            fetch_stats,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
