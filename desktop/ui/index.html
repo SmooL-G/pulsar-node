@@ -104,6 +104,10 @@
     .sparkline path { fill: rgba(167, 139, 250, 0.18); stroke: #a78bfa; stroke-width: 1.5; stroke-linejoin: round; }
     .earn-meta { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; }
     .earn-meta .label { display: block; color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+    .earn-session { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c4b5fd; margin: -4px 0 8px; }
+    .earn-session .dot.pulse { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; box-shadow: 0 0 6px #a78bfa; animation: pulse 1.5s ease-in-out infinite; }
+    .earn-session-num { font-variant-numeric: tabular-nums; color: #ddd6fe; font-weight: 600; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .row { display: flex; gap: 8px; margin-top: 10px; }
@@ -160,7 +164,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.23</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.24</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -182,6 +186,12 @@
         <span class="earn-num" id="earn-today">0</span>
         <span class="earn-unit">PLS</span>
         <span class="earn-period" data-i18n="earned_today">earned today</span>
+      </div>
+      <div class="earn-session" id="earn-session-row" style="display:none">
+        <span class="dot pulse"></span>
+        <span data-i18n="this_session">This session:</span>
+        <strong id="earn-session" class="earn-session-num">~0</strong>
+        <span>PLS</span>
       </div>
       <svg class="sparkline" id="sparkline" viewBox="0 0 280 56" preserveAspectRatio="none"></svg>
       <div class="earn-meta">
@@ -280,7 +290,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.23',
+        subtitle: 'Relay Node v0.1.24',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -327,6 +337,7 @@
         earned_today: 'earned in 24h',
         lifetime_pls: 'Lifetime',
         pending_pls: 'Frozen',
+        this_session: 'This session:',
         check_updates: 'Check for updates',
         checking_updates: 'Checking…',
         no_updates: 'You are on the latest version ✓',
@@ -336,7 +347,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.23',
+        subtitle: 'Relay Node v0.1.24',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -383,6 +394,7 @@
         earned_today: 'за 24 часа',
         lifetime_pls: 'Всего',
         pending_pls: 'Заморожено',
+        this_session: 'Эта сессия:',
         check_updates: 'Проверить обновления',
         checking_updates: 'Проверяю…',
         no_updates: 'Установлена последняя версия ✓',
@@ -608,8 +620,52 @@
         $('lifetime-bytes').textContent = fmtBytes(s.lifetime_bytes);
         $('lifetime-peers').textContent = s.lifetime_peers;
         $('last-proof').textContent = s.last_proof_status ? tx('last_proof') + s.last_proof_status : '';
+        // Snapshot session base for the smooth client-side ticker.
+        sessionBase = projectedFromStats(s);
+        sessionBaseAt = Date.now();
+      } else {
+        sessionBase = 0;
       }
     }
+
+    // Reward formula constants — must stay in sync with
+    // apps/server/src/modules/nodes/nodes.service.ts (BASE_RATE_PER_HOUR,
+    // BANDWIDTH_BONUS_PER_GB, PEER_BONUS_PER_PEER, MAX_DAILY_PAYOUT).
+    const PLS_PER_HOUR = 50;
+    const PLS_PER_GB = 25;
+    const PLS_PER_PEER = 5;
+    const PLS_DAILY_CAP = 2500;
+
+    function projectedFromStats(s) {
+      const uptimeH = Number(s.uptime_seconds) / 3600;
+      const gb = Number(s.lifetime_bytes) / (1024 * 1024 * 1024);
+      const peers = Number(s.unique_peers_session);
+      const raw = uptimeH * PLS_PER_HOUR + gb * PLS_PER_GB + peers * PLS_PER_PEER;
+      // Pro-rate the cap to the session's slice of a day.
+      const capForSession = PLS_DAILY_CAP * Math.min(1, uptimeH / 24);
+      return Math.min(raw, capForSession);
+    }
+
+    let sessionBase = 0;
+    let sessionBaseAt = Date.now();
+    function tickSession() {
+      // Smoothly extrapolate between runner_status polls. Each second
+      // adds 50/3600 = 0.0139 PLS to the base, plus whatever bandwidth
+      // accrued since last snapshot (caller updates sessionBase).
+      const since = (Date.now() - sessionBaseAt) / 1000;
+      const live = sessionBase + since * (PLS_PER_HOUR / 3600);
+      const el = $('earn-session');
+      const row = $('earn-session-row');
+      if (live > 0) {
+        row.style.display = 'flex';
+        // 2 decimals for tiny numbers, 1 for medium, 0 for large.
+        const fmt = live < 10 ? live.toFixed(2) : live < 100 ? live.toFixed(1) : Math.floor(live).toString();
+        el.textContent = '~' + fmt;
+      } else {
+        row.style.display = 'none';
+      }
+    }
+    setInterval(tickSession, 1000);
 
     function fmtPLS(s) {
       const n = Number(s || 0);
