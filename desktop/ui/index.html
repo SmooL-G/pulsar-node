@@ -9,92 +9,136 @@
     body {
       margin: 0;
       font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f1115;
+      /* Soft radial background — same vibe as the splash, but quiet. */
+      background:
+        radial-gradient(1200px 600px at 50% -200px, rgba(99, 102, 241, 0.18), transparent 60%),
+        radial-gradient(900px 500px at 100% 100%, rgba(6, 182, 212, 0.10), transparent 70%),
+        #0a0c12;
+      background-attachment: fixed;
       color: #e5e7eb;
       min-height: 100vh;
     }
     .app { padding: 16px; max-width: 380px; margin: 0 auto; }
 
     header {
-      display: flex; align-items: center; gap: 10px;
+      display: flex; align-items: center; gap: 12px;
       margin-bottom: 18px;
     }
     header .logo {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: linear-gradient(135deg, #06b6d4, #6366f1);
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, #22d3ee, #6366f1);
+      box-shadow: 0 6px 16px -4px rgba(99, 102, 241, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
     }
     header .title-block { flex: 1; }
-    header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+    header h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
     header .ver { color: #6b7280; font-size: 11px; }
     .lang-toggle {
-      background: #1a1d24; border: 1px solid #2a2f3a;
-      border-radius: 6px;
-      padding: 4px 8px;
-      color: #9ca3af; font-size: 11px;
+      background: rgba(26, 29, 36, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 5px 10px;
+      color: #9ca3af; font-size: 11px; font-weight: 600;
       cursor: pointer;
+      transition: all 0.15s;
+      backdrop-filter: blur(8px);
     }
-    .lang-toggle:hover { color: #e5e7eb; }
+    .lang-toggle:hover { color: #e5e7eb; border-color: rgba(255, 255, 255, 0.12); }
 
     .card {
-      background: #1a1d24;
-      border: 1px solid #2a2f3a;
-      border-radius: 12px;
-      padding: 14px;
+      background: linear-gradient(180deg, rgba(26, 29, 36, 0.85) 0%, rgba(20, 23, 30, 0.85) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 14px;
+      padding: 14px 16px;
       margin-bottom: 12px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.25);
     }
     .card h2 {
-      margin: 0 0 10px;
-      font-size: 11px; font-weight: 600;
-      letter-spacing: 0.06em; text-transform: uppercase;
+      margin: 0 0 12px;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
       color: #9ca3af;
     }
 
+    /* Status as a colored pill, not a separate dot+text. */
     .status-row { display: flex; align-items: center; gap: 8px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .dot.on { background: #10b981; box-shadow: 0 0 8px #10b98166; }
-    .dot.off { background: #6b7280; }
-    .dot.warn { background: #f59e0b; box-shadow: 0 0 8px #f59e0b66; }
-    .status-text { font-weight: 600; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .status-pill.on { background: rgba(16, 185, 129, 0.12); color: #34d399; box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25) inset; }
+    .status-pill.off { background: rgba(107, 114, 128, 0.12); color: #9ca3af; box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.18) inset; }
+    .status-pill.warn { background: rgba(245, 158, 11, 0.12); color: #fbbf24; box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25) inset; }
+    .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-pill.on .dot { background: #10b981; box-shadow: 0 0 6px #10b981; animation: pulse 1.8s ease-in-out infinite; }
+    .status-pill.off .dot { background: #6b7280; }
+    .status-pill.warn .dot { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: pulse 1.8s ease-in-out infinite; }
 
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat {
-      background: #0f1115;
-      border-radius: 8px;
-      padding: 8px 10px;
+      background: rgba(15, 17, 21, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 10px;
+      padding: 10px 12px;
     }
     .stat .label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #e5e7eb; margin-top: 2px; }
+    .stat .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #e5e7eb; margin-top: 3px; font-weight: 600; }
 
-    label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }
+    label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px; margin-top: 10px; font-weight: 500; }
     label:first-child { margin-top: 0; }
     input {
       width: 100%; box-sizing: border-box;
-      background: #0f1115;
-      border: 1px solid #2a2f3a;
+      background: rgba(15, 17, 21, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       color: #e5e7eb;
-      border-radius: 8px;
-      padding: 8px 10px;
+      border-radius: 10px;
+      padding: 10px 12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 12px;
       outline: none;
+      transition: all 0.15s;
     }
-    input:focus { border-color: #6366f1; }
+    input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
 
     button {
-      background: #6366f1; color: white;
-      border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: white;
+      border: none; border-radius: 10px;
       padding: 10px 14px; font-weight: 600;
       cursor: pointer; font-size: 13px;
+      transition: all 0.15s;
+      box-shadow: 0 2px 8px -2px rgba(99, 102, 241, 0.4);
     }
-    button:hover { background: #4f46e5; }
-    button.secondary { background: #1f2937; color: #d1d5db; }
-    button.secondary:hover { background: #2a2f3a; }
-    button.danger { background: #dc2626; color: white; }
-    button.danger:hover { background: #b91c1c; }
+    button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(99, 102, 241, 0.5); }
+    button:active { transform: translateY(0); }
+    button.secondary {
+      background: rgba(31, 41, 55, 0.6); color: #d1d5db;
+      box-shadow: none;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    button.secondary:hover {
+      background: rgba(42, 47, 58, 0.8);
+      transform: none;
+      box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3);
+    }
+    button.danger {
+      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      box-shadow: none;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    button.danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      transform: none;
+      box-shadow: 0 2px 8px -2px rgba(239, 68, 68, 0.3);
+    }
 
     .earnings-card {
-      background: linear-gradient(135deg, #1a1d24 0%, #1e1b3a 100%);
-      border-color: #4338ca;
+      background: linear-gradient(135deg, rgba(76, 29, 149, 0.35) 0%, rgba(30, 27, 75, 0.5) 50%, rgba(20, 23, 30, 0.85) 100%);
+      border-color: rgba(167, 139, 250, 0.25);
+      box-shadow: 0 4px 24px -4px rgba(99, 102, 241, 0.25);
     }
     .earn-big { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 12px; flex-wrap: wrap; }
     .earn-num { font-size: 28px; font-weight: 700; color: #a78bfa; font-variant-numeric: tabular-nums; }
@@ -133,17 +177,18 @@
     }
 
     .who {
-      background: #0f1115;
-      border-radius: 8px;
-      padding: 8px 10px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 10px;
+      padding: 8px 12px;
       font-size: 12px;
       color: #9ca3af;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       display: flex; align-items: center; gap: 6px;
       flex-wrap: wrap;
     }
     .who strong { color: #e5e7eb; }
-    .who .ok-mark { color: #10b981; font-weight: bold; }
+    .who .ok-mark { color: #34d399; font-weight: bold; font-size: 14px; }
 
     .advanced-toggle {
       background: none; border: none; color: #6b7280;
@@ -164,7 +209,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.24</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.25</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -173,8 +218,10 @@
     <div class="card">
       <h2 data-i18n="status">Status</h2>
       <div class="status-row">
-        <span class="dot off" id="dot"></span>
-        <span class="status-text" id="status-text" data-i18n="not_configured">Not configured</span>
+        <span class="status-pill off" id="status-pill">
+          <span class="dot"></span>
+          <span class="status-text" id="status-text" data-i18n="not_configured">Not configured</span>
+        </span>
       </div>
       <div class="hint" id="last-proof"></div>
     </div>
@@ -290,7 +337,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.24',
+        subtitle: 'Relay Node v0.1.25',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -317,7 +364,7 @@
         system: 'System',
         autostart_label: 'Start on Windows login',
         autostart_hint: 'Runs in tray; the window stays hidden unless you open it.',
-        footer_note: 'Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.',
+        footer_note: 'Earnings start accruing after 1h online and land in your Pulsar wallet after a 24h freeze.',
         learn_more: 'Learn more',
         saved: 'Saved ✓',
         save_failed: 'Save failed: ',
@@ -347,7 +394,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.24',
+        subtitle: 'Relay Node v0.1.25',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -374,7 +421,7 @@
         system: 'Система',
         autostart_label: 'Запускать при входе в Windows',
         autostart_hint: 'Работает в трее; окно скрыто пока не откроешь.',
-        footer_note: 'Награды появляются в кошельке Pulsar после 24ч непрерывного аптайма + 24ч заморозки.',
+        footer_note: 'Награды копятся с первого часа онлайна и зачисляются в кошелёк после 24ч заморозки.',
         learn_more: 'Подробнее',
         saved: 'Сохранено ✓',
         save_failed: 'Ошибка сохранения: ',
@@ -594,16 +641,16 @@
     async function refresh() {
       const running = await invoke('is_running');
       const cfg = await invoke('get_config');
-      const dot = $('dot');
+      const pill = $('status-pill');
       const txt = $('status-text');
       if (running) {
-        dot.className = 'dot on';
+        pill.className = 'status-pill on';
         txt.textContent = tx('online');
       } else if (cfg.token && cfg.node_id) {
-        dot.className = 'dot warn';
+        pill.className = 'status-pill warn';
         txt.textContent = tx('configured_offline');
       } else {
-        dot.className = 'dot off';
+        pill.className = 'status-pill off';
         txt.textContent = tx('not_configured');
       }
       $('stats-card').style.display = running ? 'block' : 'none';
