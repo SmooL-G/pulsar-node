@@ -301,7 +301,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.29</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.30</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -455,19 +455,29 @@
     // fall back to the raw plugin invoke. data-tauri-drag-region alone
     // is unreliable on first paint.
     async function startDrag() {
+      // Try all known Tauri 2 paths in order; log which one fires.
       const T = window.__TAURI__;
+      const tries = [];
       try {
-        if (T && T.webviewWindow && T.webviewWindow.getCurrentWebviewWindow) {
+        if (T?.webviewWindow?.getCurrentWebviewWindow) {
+          tries.push('webviewWindow.getCurrentWebviewWindow().startDragging');
           await T.webviewWindow.getCurrentWebviewWindow().startDragging();
           return;
         }
-        if (T && T.window && T.window.getCurrentWindow) {
+      } catch (e) { console.warn('[drag] webviewWindow path:', e); }
+      try {
+        if (T?.window?.getCurrentWindow) {
+          tries.push('window.getCurrentWindow().startDragging');
           await T.window.getCurrentWindow().startDragging();
           return;
         }
-      } catch (e) { /* fall through to invoke */ }
-      try { await invoke('plugin:window|start_dragging'); }
-      catch (e) { console.warn('[drag] failed:', e); }
+      } catch (e) { console.warn('[drag] window path:', e); }
+      try {
+        tries.push('invoke(plugin:window|start_dragging)');
+        await invoke('plugin:window|start_dragging');
+        return;
+      } catch (e) { console.warn('[drag] invoke path:', e); }
+      console.warn('[drag] all paths failed. Tried:', tries, 'globals:', Object.keys(T || {}));
     }
     document.querySelector('.titlebar').addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;            // left click only
@@ -490,7 +500,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.29',
+        subtitle: 'Relay Node v0.1.30',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -549,7 +559,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.29',
+        subtitle: 'Relay Node v0.1.30',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
