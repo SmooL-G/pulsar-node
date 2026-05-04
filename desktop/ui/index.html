@@ -18,7 +18,42 @@
       color: #e5e7eb;
       min-height: 100vh;
     }
-    .app { padding: 16px; max-width: 380px; margin: 0 auto; }
+    .app { padding: 0 16px 16px; max-width: 380px; margin: 0 auto; }
+
+    /* Custom title bar — replaces the OS chrome we hid via decorations:false. */
+    .titlebar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 4px 0 12px;
+      user-select: none;
+      -webkit-user-select: none;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: transparent;
+    }
+    .titlebar .tb-spacer { flex: 1; height: 100%; }
+    .tb-btn {
+      width: 32px; height: 24px;
+      background: transparent;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+      box-shadow: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tb-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #e5e7eb;
+      transform: none;
+      box-shadow: none;
+    }
+    .tb-btn.tb-close:hover { background: #dc2626; color: #fff; }
 
     header {
       display: flex; align-items: center; gap: 12px;
@@ -204,12 +239,26 @@
   </style>
 </head>
 <body>
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="tb-spacer" data-tauri-drag-region></div>
+    <button class="tb-btn" id="tb-min" title="Minimize" aria-label="Minimize">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1"/>
+      </svg>
+    </button>
+    <button class="tb-btn tb-close" id="tb-close" title="Close" aria-label="Close">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <line x1="2" y1="2" x2="8" y2="8" stroke="currentColor" stroke-width="1.2"/>
+        <line x1="8" y1="2" x2="2" y2="8" stroke="currentColor" stroke-width="1.2"/>
+      </svg>
+    </button>
+  </div>
   <div class="app">
     <header>
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.25</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.26</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
@@ -334,10 +383,16 @@
     const disable   = () => invoke('plugin:autostart|disable');
     const isEnabled = () => invoke('plugin:autostart|is_enabled');
 
+    // Custom titlebar buttons (we hid the OS chrome via decorations:false).
+    // Close hides to tray instead of quitting — same as the X button used to,
+    // because the on_window_event handler in lib.rs prevent_close()s.
+    document.getElementById('tb-min').onclick = () => invoke('plugin:window|minimize');
+    document.getElementById('tb-close').onclick = () => invoke('plugin:window|close');
+
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.25',
+        subtitle: 'Relay Node v0.1.26',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -394,7 +449,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.25',
+        subtitle: 'Relay Node v0.1.26',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
