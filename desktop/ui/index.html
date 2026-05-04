@@ -192,6 +192,37 @@
     .row { display: flex; gap: 8px; margin-top: 10px; }
     .row > * { flex: 1; }
 
+    /* Tab strip — switches between Main view and Settings view. */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      margin-bottom: 14px;
+      background: rgba(15, 17, 21, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+    }
+    .tab {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #9ca3af;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 0;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: none;
+      transition: all 0.18s;
+    }
+    .tab:hover { color: #e5e7eb; transform: none; box-shadow: none; }
+    .tab.active {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #fff;
+      box-shadow: 0 2px 6px -1px rgba(99, 102, 241, 0.4);
+    }
+    .tab-pane[hidden] { display: none; }
+
     a { color: #6366f1; text-decoration: none; font-size: 12px; }
     a:hover { text-decoration: underline; }
 
@@ -258,10 +289,19 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.26</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.27</div>
       </div>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
+
+    <!-- Tab strip -->
+    <div class="tabs">
+      <button class="tab active" id="tab-main" data-i18n="tab_main">Main</button>
+      <button class="tab" id="tab-settings" data-i18n="tab_settings">Settings</button>
+    </div>
+
+    <!-- ─── Tab 1: Main ─────────────────────────────────────────── -->
+    <div class="tab-pane" id="pane-main">
 
     <!-- Status -->
     <div class="card">
@@ -308,6 +348,11 @@
         <div class="stat"><div class="label" data-i18n="lifetime_peers">Lifetime peers</div><div class="value" id="lifetime-peers">—</div></div>
       </div>
     </div>
+
+    </div><!-- /pane-main -->
+
+    <!-- ─── Tab 2: Settings ─────────────────────────────────────── -->
+    <div class="tab-pane" id="pane-settings" hidden>
 
     <!-- Setup -->
     <div class="card">
@@ -360,6 +405,8 @@
       <div class="hint" id="update-status"></div>
     </div>
 
+    </div><!-- /pane-settings -->
+
     <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:16px">
       <span data-i18n="footer_note">Earnings appear in your Pulsar wallet after 24h continuous uptime + 24h freeze.</span>
       <a href="https://pulsar-chat.fun/mining" target="_blank" data-i18n="learn_more">Learn more</a>.
@@ -386,13 +433,39 @@
     // Custom titlebar buttons (we hid the OS chrome via decorations:false).
     // Close hides to tray instead of quitting — same as the X button used to,
     // because the on_window_event handler in lib.rs prevent_close()s.
-    document.getElementById('tb-min').onclick = () => invoke('plugin:window|minimize');
-    document.getElementById('tb-close').onclick = () => invoke('plugin:window|close');
+    document.getElementById('tb-min').onclick = (e) => {
+      e.stopPropagation();
+      invoke('plugin:window|minimize');
+    };
+    document.getElementById('tb-close').onclick = (e) => {
+      e.stopPropagation();
+      invoke('plugin:window|close');
+    };
+    // Programmatic drag fallback — data-tauri-drag-region in Tauri 2 only
+    // works once the @tauri-apps/api/window listener registers, which is
+    // sometimes too late on first paint. mousedown → start_dragging is
+    // bulletproof.
+    document.querySelector('.titlebar').addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;            // left click only
+      if (e.target.closest('button')) return; // skip the min/close buttons
+      invoke('plugin:window|start_dragging').catch(() => {});
+    });
+
+    // Tab switching
+    function activateTab(name) {
+      const isMain = name === 'main';
+      document.getElementById('tab-main').classList.toggle('active', isMain);
+      document.getElementById('tab-settings').classList.toggle('active', !isMain);
+      document.getElementById('pane-main').hidden = !isMain;
+      document.getElementById('pane-settings').hidden = isMain;
+    }
+    document.getElementById('tab-main').onclick = () => activateTab('main');
+    document.getElementById('tab-settings').onclick = () => activateTab('settings');
 
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.26',
+        subtitle: 'Relay Node v0.1.27',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -440,6 +513,8 @@
         lifetime_pls: 'Lifetime',
         pending_pls: 'Frozen',
         this_session: 'This session:',
+        tab_main: 'Main',
+        tab_settings: 'Settings',
         check_updates: 'Check for updates',
         checking_updates: 'Checking…',
         no_updates: 'You are on the latest version ✓',
@@ -449,7 +524,7 @@
         update_error: 'Update check failed: ',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.26',
+        subtitle: 'Relay Node v0.1.27',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -497,6 +572,8 @@
         lifetime_pls: 'Всего',
         pending_pls: 'Заморожено',
         this_session: 'Эта сессия:',
+        tab_main: 'Главное',
+        tab_settings: 'Настройки',
         check_updates: 'Проверить обновления',
         checking_updates: 'Проверяю…',
         no_updates: 'Установлена последняя версия ✓',
