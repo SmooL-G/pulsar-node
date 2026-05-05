@@ -11,6 +11,7 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 mod runner;
+mod storage;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 struct AppConfig {
@@ -28,6 +29,7 @@ struct State {
     cfg: Mutex<AppConfig>,
     started: Mutex<bool>,
     runner: Mutex<Option<runner::RunnerHandle>>,
+    storage: Mutex<Option<storage::Storage>>,
 }
 
 #[tauri::command]
@@ -62,8 +64,9 @@ fn start_runner(state: tauri::State<'_, State>) -> Result<(), String> {
     let token = cfg.token.clone().ok_or("missing token")?;
     let api_url = cfg.api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
     let port = cfg.port.unwrap_or(3030);
+    let storage = state.storage.lock().unwrap().clone();
 
-    let handle = runner::start(runner::RunnerConfig { api_url, node_id, token, port });
+    let handle = runner::start(runner::RunnerConfig { api_url, node_id, token, port, storage });
     *state.runner.lock().unwrap() = Some(handle);
     *started = true;
     Ok(())
@@ -209,10 +212,25 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let cfg = load_or_default(&app_handle);
+
+            // Open the offline-message SQLite at <app_data_dir>/offline_messages.db.
+            // If it fails (disk full, permissions), the storage feature is
+            // disabled but the app keeps running fine — runner just won't
+            // accept Store/Fetch tunnel frames.
+            let storage = app_handle
+                .path()
+                .app_data_dir()
+                .ok()
+                .and_then(|d| match storage::Storage::open(&d) {
+                    Ok(s) => Some(s),
+                    Err(e) => { eprintln!("[storage] open failed: {}", e); None }
+                });
+
             let state = State {
                 cfg: Mutex::new(cfg.clone()),
                 started: Mutex::new(false),
                 runner: Mutex::new(None),
+                storage: Mutex::new(storage.clone()),
             };
             app.manage(state);
 
@@ -225,6 +243,7 @@ pub fn run() {
                     node_id: cfg.node_id.unwrap(),
                     token: cfg.token.unwrap(),
                     port,
+                    storage: storage.clone(),
                 });
                 let s: tauri::State<State> = app.state();
                 *s.runner.lock().unwrap() = Some(handle);

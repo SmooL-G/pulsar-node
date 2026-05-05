@@ -16,6 +16,15 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::connect_async;
+use base64::Engine;
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD.decode(s).ok()
+}
+
+fn base64_encode(b: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(b)
+}
 
 const RATE_PER_SECOND: u32 = 60;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
@@ -220,6 +229,10 @@ pub struct RunnerConfig {
     pub node_id: String,
     pub token: String,
     pub port: u16,
+    /// Optional offline-message storage. When None, Store/Fetch/Challenge
+    /// tunnel frames are silently dropped (graceful degradation if SQLite
+    /// init failed at boot).
+    pub storage: Option<crate::storage::Storage>,
 }
 
 /// Handle for a running runner — keeps the JoinHandles so we can stop
@@ -297,9 +310,15 @@ pub fn start(cfg: RunnerConfig) -> RunnerHandle {
     let subs_tunnel = subs.clone();
     let api_for_tunnel = cfg.api_url.clone();
     let tok_for_tunnel = cfg.token.clone();
+    let storage_for_tunnel = cfg.storage.clone();
     let tunnel_handle = tauri::async_runtime::spawn(async move {
         loop {
-            let result = run_tunnel(&api_for_tunnel, &tok_for_tunnel, subs_tunnel.clone()).await;
+            let result = run_tunnel(
+                &api_for_tunnel,
+                &tok_for_tunnel,
+                subs_tunnel.clone(),
+                storage_for_tunnel.clone(),
+            ).await;
             let status = match result {
                 Ok(()) => "tunnel: disconnected".to_string(),
                 Err(e) => format!("tunnel error: {}", e),
@@ -334,10 +353,25 @@ pub fn start(cfg: RunnerConfig) -> RunnerHandle {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum TunnelIn {
+    // Browser-session multiplexing (existing).
     Open { sid: u64 },
     Msg { sid: u64, data: serde_json::Value },
     Close { sid: u64 },
     Ping,
+    // Miner-storage protocol (Phase 0). Spec: docs/MINER_STORAGE.md.
+    Store {
+        id: String,
+        recipient: String,
+        ciphertext: String,   // base64 of E2E ciphertext
+        #[serde(rename = "expiresAt")]
+        expires_at: i64,      // unix seconds
+    },
+    Challenge { id: String },
+    Fetch {
+        recipient: String,
+        #[serde(default)]
+        since: i64,
+    },
 }
 
 #[derive(Serialize)]
@@ -347,6 +381,17 @@ enum TunnelOut {
     #[allow(dead_code)]
     Close { sid: u64 },
     Pong,
+    Stored { id: String, ok: bool },
+    Proof { id: String, hash: Option<String> },
+    Fetched { recipient: String, messages: Vec<FetchedMsg> },
+}
+
+#[derive(Serialize)]
+struct FetchedMsg {
+    id: String,
+    ciphertext: String,        // base64
+    #[serde(rename = "createdAt")]
+    created_at: i64,
 }
 
 /// Per-virtual-session state running the same pubsub state machine that
@@ -363,6 +408,7 @@ async fn run_tunnel(
     api_url: &str,
     token: &str,
     subs: Subscribers,
+    storage: Option<crate::storage::Storage>,
 ) -> Result<(), String> {
     // Convert https://host -> wss://host/node-tunnel?token=...
     let base = api_url.trim_end_matches('/');
@@ -483,6 +529,44 @@ async fn run_tunnel(
                     let mut st = STATS.lock();
                     st.active_connections = st.active_connections.saturating_sub(1);
                 }
+            }
+
+            // ── Miner-storage frames (Phase 0) ─────────────────────
+            // Silently degrade if storage is None — disk init failed at
+            // boot. Never crash the tunnel for storage failures.
+            TunnelIn::Store { id, recipient, ciphertext, expires_at } => {
+                let ok = match (&storage, base64_decode(&ciphertext)) {
+                    (Some(s), Some(bytes)) => {
+                        s.store(&id, &recipient, &bytes, expires_at).is_ok()
+                    }
+                    _ => false,
+                };
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&TunnelOut::Stored { id, ok }).unwrap().into(),
+                ));
+            }
+            TunnelIn::Challenge { id } => {
+                let hash = storage.as_ref().and_then(|s| s.proof(&id).ok().flatten());
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&TunnelOut::Proof { id, hash }).unwrap().into(),
+                ));
+            }
+            TunnelIn::Fetch { recipient, since } => {
+                let messages = storage
+                    .as_ref()
+                    .and_then(|s| s.fetch(&recipient, since).ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|m| FetchedMsg {
+                        id: m.id,
+                        ciphertext: base64_encode(&m.ciphertext),
+                        created_at: m.created_at,
+                    })
+                    .collect();
+                let _ = tx.send(Message::Text(
+                    serde_json::to_string(&TunnelOut::Fetched { recipient, messages })
+                        .unwrap().into(),
+                ));
             }
         }
     }
