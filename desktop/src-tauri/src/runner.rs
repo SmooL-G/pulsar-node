@@ -435,6 +435,41 @@ async fn run_tunnel(
         }
     });
 
+    // App-level keepalive: Windows sleep / NAT timeouts can silently
+    // freeze a TCP socket without firing close. Without this, the
+    // node sits in a "connected but actually dead" state forever and
+    // never re-fans-out new messages. Send {type:"ping"} every 30s,
+    // expect {type:"pong"} within 60s — otherwise drop the socket so
+    // the outer reconnect loop kicks in.
+    let last_pong = Arc::new(Mutex::new(Instant::now()));
+    let last_pong_for_keepalive = last_pong.clone();
+    let tx_for_keepalive = tx.clone();
+    let keepalive = tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        interval.tick().await; // skip immediate first tick
+        loop {
+            interval.tick().await;
+            // WebSocket-level ping; the remote ws lib auto-replies with
+            // Pong. We use the protocol frame, not a JSON {type:"ping"},
+            // so it works without changes to the relay handler.
+            if tx_for_keepalive
+                .send(Message::Ping(Vec::new().into()))
+                .is_err()
+            {
+                break; // outgoing pump gone — tunnel already dying
+            }
+            // Check liveness.
+            let elapsed = last_pong_for_keepalive.lock().elapsed();
+            if elapsed > Duration::from_secs(75) {
+                eprintln!("[tunnel] no pong for {}s — forcing reconnect", elapsed.as_secs());
+                // Drop the outgoing tx so the pump exits — write half
+                // closes, read half EOFs, run_tunnel returns.
+                drop(tx_for_keepalive);
+                break;
+            }
+        }
+    });
+
     // sid → (per-session state, mpsc-tx that produces TunnelOut::Msg{sid,...})
     let mut sessions: HashMap<u64, SessionState> = HashMap::new();
     // Per-sid sender registered in `subs`. Carries packet payloads (the
@@ -448,6 +483,11 @@ async fn run_tunnel(
             Message::Binary(b) => b.as_slice(),
             Message::Ping(p) => {
                 let _ = tx.send(Message::Pong(p.clone()));
+                continue;
+            }
+            Message::Pong(_) => {
+                // Relay's reply to our keepalive Ping — refresh liveness.
+                *last_pong.lock() = Instant::now();
                 continue;
             }
             Message::Close(_) => break,
@@ -590,6 +630,7 @@ async fn run_tunnel(
     }
     drop(tx);
     let _ = outgoing.await;
+    keepalive.abort();
     Ok(())
 }
 
