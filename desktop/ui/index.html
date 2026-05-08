@@ -89,6 +89,14 @@
       backdrop-filter: blur(8px);
     }
     .lang-toggle:hover { color: #e5e7eb; border-color: rgba(255, 255, 255, 0.12); }
+    /* Inline fiat amount shown next to PLS values in the earnings tile. */
+    .fiat {
+      font-size: 11px;
+      color: #9ca3af;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    .earn-big .fiat { font-size: 13px; }
 
     .card {
       background: linear-gradient(180deg, rgba(26, 29, 36, 0.85) 0%, rgba(20, 23, 30, 0.85) 100%);
@@ -303,6 +311,7 @@
         <h1>Pulsar Desktop</h1>
         <div class="ver" data-i18n="subtitle">Relay Node v0.1.33</div>
       </div>
+      <button class="lang-toggle" id="ccy-toggle" title="Currency">USD</button>
       <button class="lang-toggle" id="lang-toggle">EN</button>
     </header>
 
@@ -333,6 +342,7 @@
       <div class="earn-big">
         <span class="earn-num" id="earn-today">0</span>
         <span class="earn-unit">PLS</span>
+        <span class="fiat" id="earn-today-fiat"></span>
         <span class="earn-period" data-i18n="earned_today">earned today</span>
       </div>
       <div class="earn-session" id="earn-session-row" style="display:none">
@@ -340,11 +350,12 @@
         <span data-i18n="this_session">This session:</span>
         <strong id="earn-session" class="earn-session-num">~0</strong>
         <span>PLS</span>
+        <span class="fiat" id="earn-session-fiat"></span>
       </div>
       <svg class="sparkline" id="sparkline" viewBox="0 0 280 56" preserveAspectRatio="none"></svg>
       <div class="earn-meta">
-        <div><span class="label" data-i18n="lifetime_pls">Lifetime</span><span id="earn-lifetime">0</span> PLS</div>
-        <div><span class="label" data-i18n="pending_pls">Frozen</span><span id="earn-pending">0</span> PLS</div>
+        <div><span class="label" data-i18n="lifetime_pls">Lifetime</span><span id="earn-lifetime">0</span> PLS<span class="fiat" id="earn-lifetime-fiat"></span></div>
+        <div><span class="label" data-i18n="pending_pls">Frozen</span><span id="earn-pending">0</span> PLS<span class="fiat" id="earn-pending-fiat"></span></div>
       </div>
     </div>
 
@@ -633,6 +644,87 @@
       refresh();
     };
 
+    // ─── Currency switcher + PLS price ──────────────────────
+    // Cycles through 6 fiat currencies. Effective price + FX rates come
+    // from the server's /api/v1/price (60s cached). Fallback: hide fiat.
+    const CURRENCIES = ['USD', 'RUB', 'EUR', 'UAH', 'KZT', 'BYN'];
+    const CCY_SYMBOL = { USD: '$', RUB: '₽', EUR: '€', UAH: '₴', KZT: '₸', BYN: 'Br' };
+    function defaultCcy() {
+      const l = (navigator.language || '').toLowerCase();
+      if (l.startsWith('ru')) return 'RUB';
+      if (l.startsWith('uk')) return 'UAH';
+      if (l.startsWith('kk') || l.startsWith('kz')) return 'KZT';
+      if (l.startsWith('be')) return 'BYN';
+      if (/^(de|fr|es|it|pt|nl)/.test(l)) return 'EUR';
+      return 'USD';
+    }
+    let ccy = localStorage.getItem('pulsar-ccy') || defaultCcy();
+    let priceSnap = null; // { pls: { usd }, fx: { USD, RUB, ... } }
+
+    function updateCcyButton() {
+      document.getElementById('ccy-toggle').textContent = ccy;
+    }
+    function fmtFiat(value, currency) {
+      const sym = CCY_SYMBOL[currency] || currency;
+      const digits = Math.abs(value) >= 1 ? 2 : 4;
+      const s = value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+      // Symbol position matches the locale (suffix for ruble-family, prefix for $€).
+      return (currency === 'RUB' || currency === 'UAH' || currency === 'KZT' || currency === 'BYN')
+        ? `${s} ${sym}`
+        : `${sym}${s}`;
+    }
+    function plsToFiat(amountPls) {
+      if (!priceSnap) return null;
+      const usd = Number(amountPls) * priceSnap.pls.usd;
+      const rate = priceSnap.fx[ccy] ?? 1;
+      return usd * rate;
+    }
+    function setFiatLabel(elId, plsAmount) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      const v = plsToFiat(plsAmount);
+      el.textContent = v !== null ? `≈ ${fmtFiat(v, ccy)}` : '';
+    }
+    function refreshAllFiats() {
+      // Pull current PLS values straight off the rendered tile so we don't
+      // have to track them separately. They were set as plain numbers via
+      // fmtPLS — but for fiat we need the raw value, kept on data-raw.
+      const today = Number($('earn-today').dataset.raw || 0);
+      const lifetime = Number($('earn-lifetime').dataset.raw || 0);
+      const pending = Number($('earn-pending').dataset.raw || 0);
+      setFiatLabel('earn-today-fiat', today);
+      setFiatLabel('earn-lifetime-fiat', lifetime);
+      setFiatLabel('earn-pending-fiat', pending);
+    }
+
+    document.getElementById('ccy-toggle').onclick = () => {
+      const idx = CURRENCIES.indexOf(ccy);
+      ccy = CURRENCIES[(idx + 1) % CURRENCIES.length];
+      localStorage.setItem('pulsar-ccy', ccy);
+      updateCcyButton();
+      refreshAllFiats();
+    };
+
+    let lastPriceFetch = 0;
+    async function fetchPrice() {
+      // Re-fetch every 5 minutes; the public endpoint is server-cached for 60s.
+      if (Date.now() - lastPriceFetch < 5 * 60_000) return;
+      lastPriceFetch = Date.now();
+      try {
+        const cfg = await invoke('get_config');
+        const base = cfg.api_url || 'https://pulsar-chat.fun';
+        const res = await fetch(`${base}/api/v1/price`);
+        if (!res.ok) return;
+        priceSnap = await res.json();
+        refreshAllFiats();
+      } catch (err) {
+        console.warn('[price] fetch failed:', err);
+      }
+    }
+    updateCcyButton();
+    fetchPrice();
+    setInterval(fetchPrice, 5 * 60_000);
+
     // ─── helpers ───────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
     const toast = (msg, kind) => {
@@ -861,11 +953,13 @@
       const live = sessionBase + since * (PLS_PER_HOUR / 3600);
       const el = $('earn-session');
       const row = $('earn-session-row');
+      const fiatEl = $('earn-session-fiat');
       if (live > 0) {
         row.style.display = 'flex';
-        // 2 decimals for tiny numbers, 1 for medium, 0 for large.
         const fmt = live < 10 ? live.toFixed(2) : live < 100 ? live.toFixed(1) : Math.floor(live).toString();
         el.textContent = '~' + fmt;
+        const f = plsToFiat(live);
+        fiatEl.textContent = f !== null ? `≈ ${fmtFiat(f, ccy)}` : '';
       } else {
         row.style.display = 'none';
       }
@@ -909,9 +1003,16 @@
           nodeId: cfg.node_id,
           token: cfg.token,
         });
-        $('earn-today').textContent = fmtPLS(stats.todayRewards);
-        $('earn-lifetime').textContent = fmtPLS(stats.lifetimeRewards);
-        $('earn-pending').textContent = fmtPLS(stats.pendingFrozen);
+        const todayPls = Number(stats.todayRewards || 0);
+        const lifetimePls = Number(stats.lifetimeRewards || 0);
+        const pendingPls = Number(stats.pendingFrozen || 0);
+        $('earn-today').textContent = fmtPLS(todayPls);
+        $('earn-today').dataset.raw = String(todayPls);
+        $('earn-lifetime').textContent = fmtPLS(lifetimePls);
+        $('earn-lifetime').dataset.raw = String(lifetimePls);
+        $('earn-pending').textContent = fmtPLS(pendingPls);
+        $('earn-pending').dataset.raw = String(pendingPls);
+        refreshAllFiats();
         if (Array.isArray(stats.hourlyBytes24h)) drawSparkline(stats.hourlyBytes24h);
       } catch (err) {
         // Silent — earnings card just keeps its last values.
