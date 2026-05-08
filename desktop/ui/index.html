@@ -89,6 +89,37 @@
       backdrop-filter: blur(8px);
     }
     .lang-toggle:hover { color: #e5e7eb; border-color: rgba(255, 255, 255, 0.12); }
+    /* Token health: halving countdown + burn total tiles in main tab. */
+    .econ-card { padding: 12px; }
+    .econ-row { display: flex; gap: 10px; }
+    .econ-tile { flex: 1; padding: 10px 12px; border-radius: 10px; }
+    .econ-halving {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.10), rgba(244, 63, 94, 0.05));
+      border: 1px solid rgba(245, 158, 11, 0.20);
+    }
+    .econ-burn {
+      background: linear-gradient(135deg, rgba(244, 63, 94, 0.10), rgba(245, 158, 11, 0.05));
+      border: 1px solid rgba(244, 63, 94, 0.20);
+    }
+    .econ-tile-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+      font-weight: 700; margin-bottom: 4px;
+    }
+    .econ-halving .econ-tile-label { color: #fcd34d; }
+    .econ-burn .econ-tile-label { color: #fda4af; }
+    .econ-tile-big {
+      font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 4px;
+    }
+    .econ-halving .econ-tile-big { color: #fcd34d; }
+    .econ-burn .econ-tile-big { color: #fda4af; }
+    .econ-tile-big small { font-size: 11px; color: #9ca3af; font-weight: 500; }
+    .econ-tile-meta {
+      font-size: 10px; color: #9ca3af;
+      font-variant-numeric: tabular-nums;
+    }
+
     /* Inline fiat amount shown next to PLS values in the earnings tile. */
     .fiat {
       font-size: 11px;
@@ -309,7 +340,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.35</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.36</div>
       </div>
       <button class="lang-toggle" id="ccy-toggle" title="Currency">USD</button>
       <button class="lang-toggle" id="lang-toggle">EN</button>
@@ -367,6 +398,28 @@
         <div class="stat"><div class="label" data-i18n="connections">Connections</div><div class="value" id="conns">—</div></div>
         <div class="stat"><div class="label" data-i18n="peers_session">Peers (session)</div><div class="value" id="peers">—</div></div>
         <div class="stat"><div class="label" data-i18n="lifetime_traffic">Lifetime traffic</div><div class="value" id="lifetime-bytes">—</div></div>
+      </div>
+    </div>
+
+    <!-- Token health: halving countdown + total burned. Always visible
+         (educates new users why mining stays sustainable). -->
+    <div class="card econ-card">
+      <div class="econ-row">
+        <div class="econ-tile econ-halving">
+          <div class="econ-tile-label">⚡ <span data-i18n="next_halving">Next halving</span></div>
+          <div class="econ-tile-big"><span id="halving-days">—</span> <small data-i18n="days">days</small></div>
+          <div class="econ-tile-meta">
+            <span data-i18n="halving_now">Now</span>: <span id="halving-now-rate">—</span> PLS/<span data-i18n="hour_short">h</span>
+            → <span data-i18n="halving_after">after</span>: <span id="halving-next-rate">—</span>
+          </div>
+        </div>
+        <div class="econ-tile econ-burn">
+          <div class="econ-tile-label">🔥 <span data-i18n="burned_forever">Burned forever</span></div>
+          <div class="econ-tile-big"><span id="econ-burned">—</span> PLS</div>
+          <div class="econ-tile-meta">
+            <span data-i18n="circulating">Circulating</span>: <span id="econ-circulating">—</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -504,7 +557,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.35',
+        subtitle: 'Relay Node v0.1.36',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -561,9 +614,16 @@
         downloading_update: 'Downloading update… ',
         installing_update: 'Installing — the app will restart…',
         update_error: 'Update check failed: ',
+        next_halving: 'Next halving',
+        days: 'days',
+        hour_short: 'h',
+        halving_now: 'Now',
+        halving_after: 'after',
+        burned_forever: 'Burned forever',
+        circulating: 'Circulating',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.35',
+        subtitle: 'Relay Node v0.1.36',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -620,6 +680,13 @@
         downloading_update: 'Скачиваю обновление… ',
         installing_update: 'Устанавливаю — приложение перезапустится…',
         update_error: 'Ошибка проверки: ',
+        next_halving: 'Следующий halving',
+        days: 'дней',
+        hour_short: 'ч',
+        halving_now: 'Сейчас',
+        halving_after: 'после',
+        burned_forever: 'Сожжено навсегда',
+        circulating: 'В обращении',
       },
     };
 
@@ -704,6 +771,46 @@
       updateCcyButton();
       refreshAllFiats();
     };
+
+    // ─── Token health tiles (halving + burn) ─────────────────
+    function fmtPlsCompact(n) {
+      const x = Number(n || 0);
+      if (x >= 1_000_000_000) return (x / 1_000_000_000).toFixed(2) + 'B';
+      if (x >= 1_000_000) return (x / 1_000_000).toFixed(2) + 'M';
+      if (x >= 1_000) return (x / 1_000).toFixed(1) + 'k';
+      return x.toLocaleString();
+    }
+    let lastEconomyFetch = 0;
+    async function refreshEconomy() {
+      // Refresh every 5min — both endpoints are server-cached for ≥60s.
+      if (Date.now() - lastEconomyFetch < 5 * 60_000) return;
+      lastEconomyFetch = Date.now();
+      try {
+        const cfg = await invoke('get_config');
+        const apiUrl = cfg.api_url || null;
+        const [halving, stats] = await Promise.all([
+          invoke('fetch_halving', { apiUrl }).catch(() => null),
+          invoke('fetch_economy_stats', { apiUrl }).catch(() => null),
+        ]);
+        if (halving) {
+          const remainingMs = new Date(halving.nextHalvingAt).getTime() - Date.now();
+          const days = Math.max(0, Math.floor(remainingMs / (24 * 60 * 60 * 1000)));
+          $('halving-days').textContent = days;
+          $('halving-now-rate').textContent = halving.currentRates.baseRatePerHourPls;
+          // Show what the rate becomes after the next halving.
+          $('halving-next-rate').textContent =
+            (BigInt(halving.currentRates.baseRatePerHourPls) / 2n).toString();
+        }
+        if (stats) {
+          $('econ-burned').textContent = fmtPlsCompact(stats.burned);
+          $('econ-circulating').textContent = fmtPlsCompact(stats.circulating);
+        }
+      } catch (err) {
+        console.warn('[economy] fetch failed:', err);
+      }
+    }
+    refreshEconomy();
+    setInterval(refreshEconomy, 5 * 60_000);
 
     let lastPriceFetch = 0;
     async function fetchPrice() {

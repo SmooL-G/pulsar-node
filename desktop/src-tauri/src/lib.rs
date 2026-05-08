@@ -141,6 +141,42 @@ async fn fetch_price(api_url: Option<String>) -> Result<serde_json::Value, Strin
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Halving schedule + current rates. Powers the "Next halving in N days"
+/// tile on the main tab. Same WebView-CORS workaround as fetch_price.
+#[tauri::command]
+async fn fetch_halving(api_url: Option<String>) -> Result<serde_json::Value, String> {
+    let base = api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
+    let url = format!("{}/api/v1/economy/halving", base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {}", status.as_u16()));
+    }
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Total supply / burned / circulating PLS. Powers the "Burned forever"
+/// tile next to the halving countdown.
+#[tauri::command]
+async fn fetch_economy_stats(api_url: Option<String>) -> Result<serde_json::Value, String> {
+    let base = api_url.unwrap_or_else(|| "https://pulsar-chat.fun".into());
+    let url = format!("{}/api/v1/economy/stats", base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {}", status.as_u16()));
+    }
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Server-side token lookup — bypasses the WebView's CORS by doing the
 /// HTTP call from Rust. Returns the parsed JSON the platform sends
 /// back, or an error string for the UI to toast.
@@ -228,6 +264,8 @@ pub fn run() {
             lookup_token,
             fetch_stats,
             fetch_price,
+            fetch_halving,
+            fetch_economy_stats,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
