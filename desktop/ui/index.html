@@ -230,6 +230,38 @@
     .earn-num { font-size: 28px; font-weight: 700; color: #a78bfa; font-variant-numeric: tabular-nums; }
     .earn-unit { font-size: 13px; color: #9ca3af; font-weight: 600; }
     .earn-period { font-size: 11px; color: #6b7280; margin-left: auto; }
+
+    /* Two big stats side-by-side: today + lifetime. Lifetime gets a
+       gold-tinted accent because it's the cumulative trophy stat. */
+    .earn-row-big {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+    .earn-stat-big {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(20, 23, 30, 0.5);
+      border: 1px solid rgba(167, 139, 250, 0.15);
+    }
+    .earn-stat-lifetime {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.10), rgba(167, 139, 250, 0.05));
+      border-color: rgba(245, 158, 11, 0.20);
+    }
+    .earn-stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 700;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+    .earn-stat-lifetime .earn-stat-label { color: #fcd34d; }
+    .earn-stat-value { line-height: 1; }
+    .earn-stat-value .earn-num { font-size: 22px; }
+    .earn-stat-lifetime .earn-num { color: #fcd34d; }
+    .earn-stat-fiat { display: block; margin-top: 4px; margin-left: 0; font-size: 11px; }
     .sparkline { display: block; width: 100%; height: 56px; margin: 4px 0 10px; }
     .sparkline path { fill: rgba(167, 139, 250, 0.18); stroke: #a78bfa; stroke-width: 1.5; stroke-linejoin: round; }
     .earn-meta { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; }
@@ -340,7 +372,7 @@
       <div class="logo"></div>
       <div class="title-block">
         <h1>Pulsar Desktop</h1>
-        <div class="ver" data-i18n="subtitle">Relay Node v0.1.36</div>
+        <div class="ver" data-i18n="subtitle">Relay Node v0.1.37</div>
       </div>
       <button class="lang-toggle" id="ccy-toggle" title="Currency">USD</button>
       <button class="lang-toggle" id="lang-toggle">EN</button>
@@ -370,12 +402,25 @@
     <!-- Earnings (only when running, populated by /stats endpoint) -->
     <div class="card earnings-card" id="earnings-card" style="display:none">
       <h2 data-i18n="earnings">Earnings</h2>
-      <div class="earn-big">
-        <span class="earn-num" id="earn-today">0</span>
-        <span class="earn-unit">PLS</span>
-        <span class="fiat" id="earn-today-fiat"></span>
-        <span class="earn-period" data-i18n="earned_today">earned today</span>
+
+      <!-- Two big stats side-by-side: today + lifetime -->
+      <div class="earn-row-big">
+        <div class="earn-stat-big">
+          <div class="earn-stat-label" data-i18n="earned_today_label">24h</div>
+          <div class="earn-stat-value">
+            <span class="earn-num" id="earn-today">0</span> <span class="earn-unit">PLS</span>
+          </div>
+          <div class="earn-stat-fiat fiat" id="earn-today-fiat"></div>
+        </div>
+        <div class="earn-stat-big earn-stat-lifetime">
+          <div class="earn-stat-label" data-i18n="all_time_label">🏆 All time</div>
+          <div class="earn-stat-value">
+            <span class="earn-num" id="earn-lifetime">0</span> <span class="earn-unit">PLS</span>
+          </div>
+          <div class="earn-stat-fiat fiat" id="earn-lifetime-fiat"></div>
+        </div>
       </div>
+
       <div class="earn-session" id="earn-session-row" style="display:none">
         <span class="dot pulse"></span>
         <span data-i18n="this_session">This session:</span>
@@ -385,7 +430,6 @@
       </div>
       <svg class="sparkline" id="sparkline" viewBox="0 0 280 56" preserveAspectRatio="none"></svg>
       <div class="earn-meta">
-        <div><span class="label" data-i18n="lifetime_pls">Lifetime</span><span id="earn-lifetime">0</span> PLS<span class="fiat" id="earn-lifetime-fiat"></span></div>
         <div><span class="label" data-i18n="pending_pls">Frozen</span><span id="earn-pending">0</span> PLS<span class="fiat" id="earn-pending-fiat"></span></div>
       </div>
     </div>
@@ -557,7 +601,7 @@
     // ─── i18n ─────────────────────────────────────────────────
     const I18N = {
       en: {
-        subtitle: 'Relay Node v0.1.36',
+        subtitle: 'Relay Node v0.1.37',
         status: 'Status',
         not_configured: 'Not configured',
         configured_offline: 'Configured — not started',
@@ -621,9 +665,11 @@
         halving_after: 'after',
         burned_forever: 'Burned forever',
         circulating: 'Circulating',
+        earned_today_label: '24h',
+        all_time_label: '🏆 All time',
       },
       ru: {
-        subtitle: 'Relay Node v0.1.36',
+        subtitle: 'Relay Node v0.1.37',
         status: 'Статус',
         not_configured: 'Не настроено',
         configured_offline: 'Настроено — не запущено',
@@ -687,6 +733,8 @@
         halving_after: 'после',
         burned_forever: 'Сожжено навсегда',
         circulating: 'В обращении',
+        earned_today_label: '24 часа',
+        all_time_label: '🏆 Всего',
       },
     };
 
